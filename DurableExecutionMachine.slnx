@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/DurableExecutionMachine.csproj" />
+  <Project Path="tests/DurableExecutionMachine.Tests/DurableExecutionMachine.Tests.csproj" />
+</Solution>
