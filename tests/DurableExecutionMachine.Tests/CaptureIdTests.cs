@@ -44,7 +44,7 @@ public class CaptureIdTests
         var flow = new RecordingFlow(scope, yield);
         var stm = new StateMachine<RecordingFlow, int, string>((f, i, ctx) => f.Run(i, ctx));
 
-        stm.Start(flow, new Context(scope), param: 1);
+        stm.Start(flow, new Context(scope, new AsyncGate()), param: 1);
         await stm.Sync();
 
         Assert.IsTrue(stm.IsCompleted);

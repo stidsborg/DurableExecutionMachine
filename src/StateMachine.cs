@@ -1,15 +1,15 @@
 namespace DurableExecutionMachine;
 
-public class StateMachine<TFlow, TParam, TResult>(Func<TFlow, TParam, Context, Task<TResult>> startFlow) 
+public class StateMachine<TFlow, TParam, TResult>(
+    Func<TFlow, TParam, Context, Task<TResult>> startFlow,
+    SyncBehavior syncBehavior = SyncBehavior.Immediate
+) 
 {
     private Dictionary<int, byte[]> _state;
     private TFlow _flow;
     private AsyncSignal _syncSignal = new AsyncSignal();
     private AsyncSignal _notifySignal = new AsyncSignal();
     private Task<TResult> _flowTask;
-
-    private int _subflows;
-    private int _waitingSubflows;
     
     //can this work with multiple threads?
     public bool IsCompleted => _flowTask.IsCompleted;

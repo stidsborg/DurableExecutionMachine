@@ -17,7 +17,7 @@ public sealed class AsyncSignal
                 return;
             }
             
-            waitingTcs = _waitingTcs = new TaskCompletionSource();
+            waitingTcs = _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _raised = false;
         }
 
