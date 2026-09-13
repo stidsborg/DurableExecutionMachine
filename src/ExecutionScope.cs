@@ -3,7 +3,7 @@ namespace DurableExecutionMachine;
 public class ExecutionScope
 {
     private readonly AsyncLocal<string> _parent =  new();
-    private AsyncLocal<int> _nextId = new();
+    private readonly AsyncLocal<int> _nextId = new();
     
     public string GetNextId() => 
         _parent.Value is null ? (_nextId.Value++).ToString() : _parent.Value + "." + _nextId.Value++;
