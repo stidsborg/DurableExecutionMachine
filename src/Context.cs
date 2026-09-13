@@ -2,23 +2,20 @@ namespace DurableExecutionMachine;
 
 public class Context
 {
-    private readonly ExecutionScope _scope;
-    private readonly TextWriter _output;
-
-    public Context(ExecutionScope scope, TextWriter? output = null)
+    internal ExecutionScope Scope { get; }
+    
+    public Context(ExecutionScope scope)
     {
-        _scope = scope;
-        _output = output ?? Console.Out;
+        Scope = scope;
     }
 
     public Task<T> Capture<T>(Func<Task<T>> work)
     {
-        var id = _scope.GetNextId();
-        _output.WriteLine("Id: " + id + " - Parent: " + _scope);
+        var id = Scope.GetNextId();
         
         async Task<T> ExecuteWork()
         {
-            _scope.SetChild(id);
+            Scope.SetChild(id);
             return await work();
         }
         

@@ -3,97 +3,127 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class CaptureIdTests
 {
-    private static readonly string[] ExpectedLines =
+    private static readonly string[] ExpectedScopes =
     [
-        "Id: 0 - Parent: ",
-        "Id: 0.0 - Parent: 0",
-        "Id: 0.0.0 - Parent: 0.0",
-        "Id: 0.0.1 - Parent: 0.0",
-        "Id: 0.1 - Parent: 0",
-        "Id: 0.1.0 - Parent: 0.1",
-        "Id: 0.1.1 - Parent: 0.1",
-        "Id: 1 - Parent: ",
-        "Id: 1.0 - Parent: 1",
-        "Id: 1.0.0 - Parent: 1.0",
-        "Id: 1.0.1 - Parent: 1.0",
-        "Id: 1.1 - Parent: 1",
-        "Id: 1.1.0 - Parent: 1.1",
-        "Id: 1.1.1 - Parent: 1.1",
+        "",
+        "0",
+        "0.0",
+        "0.0.0",
+        "0.0.1",
+        "0.1",
+        "0.1.0",
+        "0.1.1",
+        "1",
+        "1.0",
+        "1.0.0",
+        "1.0.1",
+        "1.1",
+        "1.1.0",
+        "1.1.1",
     ];
 
     [TestMethod]
-    public async Task TestFlow_AssignsHierarchicalIds_WhenAllWorkCompletesSynchronously()
+    public async Task Capture_AssignsHierarchicalIds_WhenAllWorkCompletesSynchronously()
     {
-        var output = new StringWriter();
-        var stm = new StateMachine<TestFlow, int, string>((flow, i, ctx) => flow.Run(i, ctx));
-        var ctx = new Context(new ExecutionScope(), output);
+        var scopes = await RunFlow(yield: () => Task.CompletedTask);
 
-        stm.Start(new TestFlow(), ctx, param: 1);
-        await stm.Sync();
-
-        Assert.IsTrue(stm.IsCompleted);
-        CollectionAssert.AreEqual(ExpectedLines, Lines(output));
+        CollectionAssert.AreEqual(ExpectedScopes, scopes);
     }
 
     [TestMethod]
-    public async Task YieldingFlow_AssignsHierarchicalIds_WhenWorkResumesOnOtherThreads()
+    public async Task Capture_AssignsHierarchicalIds_WhenWorkResumesOnOtherThreads()
     {
-        var output = new StringWriter();
-        var stm = new StateMachine<YieldingFlow, int, string>((flow, i, ctx) => flow.Run(i, ctx));
-        var ctx = new Context(new ExecutionScope(), output);
+        var scopes = await RunFlow(yield: async () => await Task.Yield());
 
-        stm.Start(new YieldingFlow(), ctx, param: 1);
+        CollectionAssert.AreEqual(ExpectedScopes, scopes);
+    }
+
+    private static async Task<List<string>> RunFlow(Func<Task> yield)
+    {
+        var scope = new ExecutionScope();
+        var flow = new RecordingFlow(scope, yield);
+        var stm = new StateMachine<RecordingFlow, int, string>((f, i, ctx) => f.Run(i, ctx));
+
+        stm.Start(flow, new Context(scope), param: 1);
         await stm.Sync();
 
         Assert.IsTrue(stm.IsCompleted);
-        CollectionAssert.AreEqual(ExpectedLines, Lines(output));
+        return flow.Scopes;
     }
 
-    private static string[] Lines(StringWriter output) =>
-        output.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-
     /// <summary>
-    /// Same shape as <see cref="TestFlow"/>, but every capture yields to the thread pool
-    /// before and after doing its work, so each await resumes as a real continuation.
+    /// Two levels of nested captures with two leaves each. Every piece of work records the
+    /// scope it observes on entry, so the recorded sequence is the capture tree in execution order.
+    /// <paramref name="yield"/> runs before and after each capture, so the same shape can be run
+    /// both synchronously and with every await resuming as a real continuation.
     /// </summary>
-    private class YieldingFlow
+    private class RecordingFlow(ExecutionScope scope, Func<Task> yield)
     {
+        public List<string> Scopes { get; } = [];
+
         public async Task<string> Run(int input, Context ctx)
         {
-            await Yield();
-            await ctx.Capture(() => Branch(ctx, "0"));
-            await Yield();
-            await ctx.Capture(() => Branch(ctx, "1"));
-            await Yield();
+            await yield();
+            Scopes.Add(scope.ToString());
+            await ctx.Capture(async () =>
+            {
+                await yield();
+                Scopes.Add(scope.ToString());
+                await ctx.Capture(async () =>
+                {
+                    await yield();
+                    Scopes.Add(scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    return "";
+                });
+                await yield();
+                await ctx.Capture(async () =>
+                {
+                    await yield();
+                    Scopes.Add(scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    return "";
+                });
+                await yield();
+                return "";
+            });
+            await yield();
+            await ctx.Capture(async () =>
+            {
+                await yield();
+                Scopes.Add(scope.ToString());
+                await ctx.Capture(async () =>
+                {
+                    await yield();
+                    Scopes.Add(scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    return "";
+                });
+                await yield();
+                await ctx.Capture(async () =>
+                {
+                    await yield();
+                    Scopes.Add(scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await yield();
+                    return "";
+                });
+                await yield();
+                return "";
+            });
+            await yield();
             return "";
         }
-
-        private static async Task<string> Branch(Context ctx, string name)
-        {
-            await Yield();
-            await ctx.Capture(() => Leaves(ctx, name + ".0"));
-            await Yield();
-            await ctx.Capture(() => Leaves(ctx, name + ".1"));
-            await Yield();
-            return name;
-        }
-
-        private static async Task<string> Leaves(Context ctx, string name)
-        {
-            await Yield();
-            await ctx.Capture(() => Leaf(name + ".0"));
-            await Yield();
-            await ctx.Capture(() => Leaf(name + ".1"));
-            await Yield();
-            return name;
-        }
-
-        private static async Task<string> Leaf(string name)
-        {
-            await Yield();
-            return name;
-        }
-
-        private static async Task Yield() => await Task.Yield();
     }
 }
