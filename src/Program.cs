@@ -6,7 +6,7 @@ public static class Program
     {
         var stm = new StateMachine<TestFlow, int, string>(startFlow: (testFlow, i, c) => testFlow.Run(i, c));
         var flow = new TestFlow();
-        var ctx = new Context(new ExecutionScope(), new AsyncGate());
+        var ctx = new Context(new ExecutionScope(), new AsyncGate(), new States());
         stm.Start(flow, ctx, param: 1);
 
         Console.ReadLine();

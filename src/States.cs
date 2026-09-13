@@ -43,7 +43,7 @@ public class States
         return ByteArrayMarshaller.Serialize(type, json);
     }
 
-    private object DeserializeState(byte[] bytes)
+    private static object DeserializeState(byte[] bytes)
     {
         var arr = ByteArrayMarshaller.Deserialize(bytes, expectedCount: 2);
         var typeName = arr[0]!.Value.ToStringFromUtf8Bytes();
@@ -83,5 +83,11 @@ public class States
         }
 
         return states;
+    }
+
+    public static Dictionary<ExecutionScopeId, object> DeserializeToDictionary(byte[] bytes)
+    {
+        var states = Deserialize(bytes);
+        return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value));
     }
 }

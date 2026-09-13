@@ -23,4 +23,24 @@ public class StatesTests
 
         Assert.AreEqual(0, restored.GetBytes().Length);
     }
+
+    [TestMethod]
+    public async Task DeserializeToDictionary_ReturnsCapturedValues()
+    {
+        var states = new States();
+        var ctx = new Context(new ExecutionScope(), new AsyncGate(), states);
+
+        await ctx.Capture(() => Task.FromResult("hello"));
+        await ctx.Capture(() => Task.FromResult(42));
+        await ctx.Capture(() => Task.FromResult(new Order("abc", Quantity: 3)));
+
+        var dictionary = States.DeserializeToDictionary(states.GetBytes());
+
+        Assert.AreEqual(3, dictionary.Count);
+        Assert.AreEqual("hello", dictionary[new ExecutionScopeId("0")]);
+        Assert.AreEqual(42, dictionary[new ExecutionScopeId("1")]);
+        Assert.AreEqual(new Order("abc", Quantity: 3), dictionary[new ExecutionScopeId("2")]);
+    }
+
+    private record Order(string Id, int Quantity);
 }

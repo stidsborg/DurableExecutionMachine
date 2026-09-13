@@ -3,11 +3,13 @@ namespace DurableExecutionMachine;
 public class Context
 {
     private readonly AsyncGate _gate;
+    private readonly States _states;
     internal ExecutionScope Scope { get; }
     
-    public Context(ExecutionScope scope, AsyncGate gate)
+    public Context(ExecutionScope scope, AsyncGate gate, States states)
     {
         _gate = gate;
+        _states = states;
         Scope = scope;
     }
 
@@ -18,7 +20,11 @@ public class Context
         async Task<T> ExecuteWork()
         {
             Scope.SetChild(id);
-            return await work();
+            var result = await work();
+            if (flush)
+                _states.SetState(id, result!, result!.GetType(), removeChildren: true);
+
+            return result;
         }
         
         return ExecuteWork();
@@ -34,7 +40,10 @@ public class Context
             await _gate.Start(id);
             try
             {
-                return await subTask();
+                var result = await subTask();
+                if (flush)
+                    _states.SetState(id, result!, result!.GetType(), removeChildren: true);
+                return result;
             }
             finally
             {
