@@ -2,6 +2,8 @@ namespace DurableExecutionMachine;
 
 public class StateMachine<TFlow, TParam, TResult>(
     Func<TFlow, TParam, Context, Task<TResult>> startFlow,
+    States states,
+    TimeoutsManager timeoutsManager,
     SyncBehavior syncBehavior = SyncBehavior.Immediate
 ) 
 {
@@ -29,23 +31,8 @@ public class StateMachine<TFlow, TParam, TResult>(
     {
         //can we allow delivery of message while still running?
     }
-
-    public async Task RegisterTimeout(string id)
-    {
-        
-    }
-
-    public async Task CancelTimeout(string id)
-    {
-        
-    }
-
-    public byte[] Serialize()
-    {
-        throw new NotImplementedException();
-    }
     
-    public void Deserialize(byte[] bytes)
+    public SerializedStateMachine Serialize()
     {
         throw new NotImplementedException();
     }

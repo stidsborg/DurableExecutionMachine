@@ -4,13 +4,16 @@ public class Context
 {
     private readonly AsyncGate _gate;
     private readonly States _states;
+    private readonly Messages _messages;
+    
     internal ExecutionScope Scope { get; }
     
-    public Context(ExecutionScope scope, AsyncGate gate, States states)
+    public Context(ExecutionScope scope, AsyncGate gate, States states, Messages messages)
     {
         _gate = gate;
         _states = states;
         Scope = scope;
+        _messages = messages;
     }
 
     public Task<T> Capture<T>(Func<Task<T>> work, bool flush = true)
@@ -54,7 +57,7 @@ public class Context
         return ExecuteWork();
     }
 
-    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter)
+    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null)
     {
         throw new NotImplementedException();
     }

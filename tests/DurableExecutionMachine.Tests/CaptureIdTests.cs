@@ -42,9 +42,13 @@ public class CaptureIdTests
     {
         var scope = new ExecutionScope();
         var flow = new RecordingFlow(scope, yield);
-        var stm = new StateMachine<RecordingFlow, int, string>((f, i, ctx) => f.Run(i, ctx));
+        var stm = new StateMachine<RecordingFlow, int, string>(
+            (f, i, ctx) => f.Run(i, ctx),
+            new States(),
+            new TimeoutsManager()
+        );
 
-        stm.Start(flow, new Context(scope, new AsyncGate(), new States()), param: 1);
+        stm.Start(flow, new Context(scope, new AsyncGate(), new States(), messages: null!), param: 1);
         await stm.Sync();
 
         Assert.IsTrue(stm.IsCompleted);

@@ -7,6 +7,8 @@ public class States
     private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
     private readonly Lock _lock = new();
     
+    private List<Func<Task>> _afterPersistSubscriber = new List<Func<Task>>();
+    
     public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
     {
         var data = Serialize(instance, instanceType);
@@ -14,8 +16,7 @@ public class States
         {
             _states[id] = data;
             if (removeChildren)
-                foreach (var childId in _states.Keys.Where(i => i.IsChild(id)).ToList())
-                    _states.Remove(childId);
+                RemoveChildren(id);
         }
     }    
     
@@ -25,15 +26,20 @@ public class States
         {
             _states[id] = data;
             if (removeChildren)
-                foreach (var childId in _states.Keys.Where(i => i.IsChild(id)).ToList())
-                    _states.Remove(childId);
+                RemoveChildren(id);
         }
     }    
+    
+    public void Lock(Action action)
+    {
+        lock (_lock)
+            action();
+    }  
     
     public void RemoveChildren(ExecutionScopeId id)
     {
         lock (_lock)
-            _states.Remove(id);
+            _states.Keys.Where(id.IsChild).ToList().ForEach(childId => _states.Remove(childId));
     }
 
     private byte[] Serialize(object instance, Type instanceType)
@@ -66,6 +72,17 @@ public class States
 
             return ByteArrayMarshaller.Serialize(segments);
         }
+    }
+    
+    public void RegisterAfterPersistSubscriber(Func<Task> func)
+    {
+        lock (_lock)
+            _afterPersistSubscriber.Add(func);
+    }
+
+    public Task NotifyAfterPersist()
+    {
+        return Task.CompletedTask;
     }
 
     public static States Deserialize(byte[] bytes)
