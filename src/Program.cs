@@ -4,14 +4,12 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        var stm = new StateMachine<TestFlow, int, string>(
-            startFlow: (testFlow, i, c) => testFlow.Run(i, c),
-            new States(),
-            new TimeoutsManager()
+        var factory = new StateMachineFactory<TestFlow, int, string>(
+            startFlow: (testFlow, i, c) => testFlow.Run(i, c)
         );
-        var flow = new TestFlow();
-        var ctx = new Context(new ExecutionScope(), new AsyncGate(), new States(), messages: null!);
-        stm.Start(flow, ctx, param: 1);
+
+        var stm = factory.New();
+        stm.Start(new TestFlow(), param: 1);
 
         Console.ReadLine();
     }

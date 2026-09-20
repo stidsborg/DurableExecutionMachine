@@ -38,17 +38,15 @@ public class CaptureIdTests
         CollectionAssert.AreEqual(ExpectedScopes, scopes);
     }
 
+    private static readonly StateMachineFactory<RecordingFlow, int, string> Factory =
+        new((f, i, ctx) => f.Run(i, ctx));
+
     private static async Task<List<string>> RunFlow(Func<Task> yield)
     {
-        var scope = new ExecutionScope();
-        var flow = new RecordingFlow(scope, yield);
-        var stm = new StateMachine<RecordingFlow, int, string>(
-            (f, i, ctx) => f.Run(i, ctx),
-            new States(),
-            new TimeoutsManager()
-        );
+        var flow = new RecordingFlow(yield);
+        var stm = Factory.New();
 
-        stm.Start(flow, new Context(scope, new AsyncGate(), new States(), messages: null!), param: 1);
+        stm.Start(flow, param: 1);
         await stm.Sync();
 
         Assert.IsTrue(stm.IsCompleted);
@@ -61,25 +59,25 @@ public class CaptureIdTests
     /// <paramref name="yield"/> runs before and after each capture, so the same shape can be run
     /// both synchronously and with every await resuming as a real continuation.
     /// </summary>
-    private class RecordingFlow(ExecutionScope scope, Func<Task> yield)
+    private class RecordingFlow(Func<Task> yield)
     {
         public List<string> Scopes { get; } = [];
 
         public async Task<string> Run(int input, Context ctx)
         {
             await yield();
-            Scopes.Add(scope.ToString());
+            Scopes.Add(ctx.Scope.ToString());
             await ctx.Capture(async () =>
             {
                 await yield();
-                Scopes.Add(scope.ToString());
+                Scopes.Add(ctx.Scope.ToString());
                 await ctx.Capture(async () =>
                 {
                     await yield();
-                    Scopes.Add(scope.ToString());
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    Scopes.Add(ctx.Scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
                     return "";
                 });
@@ -87,10 +85,10 @@ public class CaptureIdTests
                 await ctx.Capture(async () =>
                 {
                     await yield();
-                    Scopes.Add(scope.ToString());
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    Scopes.Add(ctx.Scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
                     return "";
                 });
@@ -101,14 +99,14 @@ public class CaptureIdTests
             await ctx.Capture(async () =>
             {
                 await yield();
-                Scopes.Add(scope.ToString());
+                Scopes.Add(ctx.Scope.ToString());
                 await ctx.Capture(async () =>
                 {
                     await yield();
-                    Scopes.Add(scope.ToString());
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    Scopes.Add(ctx.Scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
                     return "";
                 });
@@ -116,10 +114,10 @@ public class CaptureIdTests
                 await ctx.Capture(async () =>
                 {
                     await yield();
-                    Scopes.Add(scope.ToString());
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    Scopes.Add(ctx.Scope.ToString());
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
-                    await ctx.Capture(async () => { await yield(); Scopes.Add(scope.ToString()); return ""; });
+                    await ctx.Capture(async () => { await yield(); Scopes.Add(ctx.Scope.ToString()); return ""; });
                     await yield();
                     return "";
                 });

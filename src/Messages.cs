@@ -15,11 +15,9 @@ public class Messages
     
     //deliver...
 
-    public Messages(AsyncGate gate, Func<IEnumerable<int>, Task> deliveredMessageIdsCallback, States states)
+    public Messages(AsyncGate gate, States states)
     {
         _gate = gate;
-        _deliveredMessageIdsCallback = deliveredMessageIdsCallback;
-        states.RegisterAfterPersistSubscriber(StatePersistedCallback);
     }
 
     public Task<object?> Subscribe(
@@ -63,12 +61,7 @@ public class Messages
     {
         
     }
-
-    public Task StatePersistedCallback()
-    {
-        throw new NotImplementedException();
-    }
-
+    
     private record Subscription(
         int SubscriptionId,
         Func<object, bool> Filter,

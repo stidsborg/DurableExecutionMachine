@@ -7,8 +7,6 @@ public class States
     private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
     private readonly Lock _lock = new();
     
-    private List<Func<Task>> _afterPersistSubscriber = new List<Func<Task>>();
-    
     public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
     {
         var data = Serialize(instance, instanceType);
@@ -72,17 +70,6 @@ public class States
 
             return ByteArrayMarshaller.Serialize(segments);
         }
-    }
-    
-    public void RegisterAfterPersistSubscriber(Func<Task> func)
-    {
-        lock (_lock)
-            _afterPersistSubscriber.Add(func);
-    }
-
-    public Task NotifyAfterPersist()
-    {
-        return Task.CompletedTask;
     }
 
     public static States Deserialize(byte[] bytes)

@@ -13,13 +13,22 @@ public class StateMachine<TFlow, TParam, TResult>(
     private AsyncSignal _notifySignal = new AsyncSignal();
     private Task<TResult> _flowTask;
     
+    internal Context Context { get; } = CreateContext(states);
+
+    private static Context CreateContext(States states)
+    {
+        var gate = new AsyncGate();
+        var messages = new Messages(gate, states);
+        return new Context(new ExecutionScope(), gate, states, messages);
+    }
+    
     //can this work with multiple threads?
     public bool IsCompleted => _flowTask.IsCompleted;
     public TResult GetResult() => _flowTask.Result;
     
-    public void Start(TFlow flow, Context ctx, TParam param)
+    public void Start(TFlow flow, TParam param)
     {
-        _flowTask = startFlow(flow, param, ctx);
+        _flowTask = startFlow(flow, param, Context);
     }
 
     public async Task Sync()
