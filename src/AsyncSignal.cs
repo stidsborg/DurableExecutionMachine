@@ -41,4 +41,13 @@ public sealed class AsyncSignal
         
         waitingTcs.SetResult();
     }
+
+    public void Reset()
+    {
+        lock (_lock)
+        {
+            _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _raised = false;            
+        }
+    }
 }

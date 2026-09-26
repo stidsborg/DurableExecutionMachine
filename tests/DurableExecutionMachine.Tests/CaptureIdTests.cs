@@ -39,7 +39,7 @@ public class CaptureIdTests
     }
 
     private static readonly StateMachineFactory<RecordingFlow, int, string> Factory =
-        new((f, i, ctx) => f.Run(i, ctx));
+        new((f, i, ctx) => f.Run(i, ctx), () => Task.CompletedTask);
 
     private static async Task<List<string>> RunFlow(Func<Task> yield)
     {

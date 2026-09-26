@@ -5,6 +5,14 @@ public class ExecutionScope
     private readonly AsyncLocal<ExecutionScopeId> _parent =  new();
     private readonly AsyncLocal<int> _nextId = new();
     
+    public (ExecutionScopeId, int) Current => (_parent.Value!, _nextId.Value!);
+
+    public void Restore(ExecutionScopeId parent, int nextId)
+    {
+        _parent.Value = parent;
+        _nextId.Value = nextId;
+    }
+    
     public ExecutionScopeId GetNextId() => 
         new(_parent.Value is null ? (_nextId.Value++).ToString() : _parent.Value.Id + "." + _nextId.Value++);
 

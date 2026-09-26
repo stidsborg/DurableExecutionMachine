@@ -24,13 +24,60 @@ public class Context
         {
             Scope.SetChild(id);
             var result = await work();
+            CaptureFlushless(() => result);
             if (flush)
-                _states.SetState(id, result!, result!.GetType(), removeChildren: true);
+                await _states.Flush();
 
             return result;
         }
         
         return ExecuteWork();
+    }
+    
+    public Task<T> Capture<T>(Func<T> work, bool flush = true)
+        => Capture(() => Task.FromResult(work()), flush);
+
+    public T CaptureFlushless<T>(Func<T> work)
+    {
+        var id = Scope.GetNextId();
+        var (parent, nextId) = Scope.Current;
+        Scope.SetChild(id);
+        
+        try
+        {
+            var prevResult = _states.Deserialize(id, out var hasPrevResult);
+            if (hasPrevResult)
+                return (T)prevResult!;
+            
+            var result = work();
+            if (result == null)
+                _states.SetNull(id, removeChildren: true);
+            else
+                _states.SetState(id, result, result.GetType(), removeChildren: true);
+
+            return result;
+        }
+        catch (FatalWorkflowException e)
+        {
+            _states.SetException(id, e, removeChildren: true);
+            throw;
+        }
+        catch (Exception e)
+        {
+            var workflowException = FatalWorkflowException.CreateNonGeneric(e);
+            _states.SetException(id, workflowException, removeChildren: true);
+            throw workflowException;
+        }
+        finally
+        {
+            Scope.Restore(parent, nextId);
+        }
+    }
+    
+    public Task Delay(TimeSpan delay)
+    {
+        var wakeUpAt = Capture(() => DateTime.UtcNow + delay);
+        throw new NotImplementedException();
     }
     
     public Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)

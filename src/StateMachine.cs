@@ -2,15 +2,15 @@ namespace DurableExecutionMachine;
 
 public class StateMachine<TFlow, TParam, TResult>(
     Func<TFlow, TParam, Context, Task<TResult>> startFlow,
+    Func<Task> syncCallback,
     States states,
+    RunningAndWaiting runningAndWaiting,
     TimeoutsManager timeoutsManager,
     SyncBehavior syncBehavior = SyncBehavior.Immediate
 ) 
 {
     private Dictionary<int, byte[]> _state;
     private TFlow _flow;
-    private AsyncSignal _syncSignal = new AsyncSignal();
-    private AsyncSignal _notifySignal = new AsyncSignal();
     private Task<TResult> _flowTask;
     
     internal Context Context { get; } = CreateContext(states);
@@ -28,12 +28,34 @@ public class StateMachine<TFlow, TParam, TResult>(
     
     public void Start(TFlow flow, TParam param)
     {
-        _flowTask = startFlow(flow, param, Context);
+        runningAndWaiting.SubflowStarted();
+        _flowTask = RunFlow();
+
+        async Task<TResult> RunFlow()
+        {
+            try
+            {
+                return await startFlow(flow, param, Context);
+            }
+            finally
+            {
+                runningAndWaiting.SubflowCompleted();
+            }
+        }
     }
 
     public async Task Sync()
     {
-        await Task.WhenAny(_syncSignal.Wait(), _flowTask);
+        runningAndWaiting.Suspend();
+        try
+        {
+            await runningAndWaiting.WaitForAllSuspended();
+            await syncCallback();
+        }
+        finally
+        {
+            runningAndWaiting.Resume();
+        }
     }
     
     public async Task DeliverMessage()

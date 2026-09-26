@@ -6,12 +6,12 @@ public class StatesTests
     [TestMethod]
     public void GetBytes_RoundTrips_ThroughDeserialize()
     {
-        var states = new States();
+        var states = new States(new RunningAndWaiting());
         states.SetState(new ExecutionScopeId(""), "root", typeof(string), removeChildren: false);
         states.SetState(new ExecutionScopeId("0.1"), 42, typeof(int), removeChildren: false);
         states.SetState(new ExecutionScopeId("1"), [], removeChildren: false);
 
-        var restored = States.Deserialize(states.GetBytes());
+        var restored = States.Deserialize(states.GetBytes(), new RunningAndWaiting());
 
         CollectionAssert.AreEqual(states.GetBytes(), restored.GetBytes());
     }
@@ -19,7 +19,7 @@ public class StatesTests
     [TestMethod]
     public void GetBytes_RoundTrips_WhenEmpty()
     {
-        var restored = States.Deserialize(new States().GetBytes());
+        var restored = States.Deserialize(new States(new RunningAndWaiting()).GetBytes(), new RunningAndWaiting());
 
         Assert.AreEqual(0, restored.GetBytes().Length);
     }
@@ -27,7 +27,7 @@ public class StatesTests
     [TestMethod]
     public async Task DeserializeToDictionary_ReturnsCapturedValues()
     {
-        var states = new States();
+        var states = new States(new RunningAndWaiting());
         var ctx = new Context(new ExecutionScope(), new AsyncGate(), states, messages: null!);
 
         await ctx.Capture(() => Task.FromResult("hello"));
@@ -45,7 +45,7 @@ public class StatesTests
     [TestMethod]
     public void RemoveChildren_RemovesDescendants_ButNotSiblingsWithSamePrefix()
     {
-        var states = new States();
+        var states = new States(new RunningAndWaiting());
         foreach (var id in new[] { "1", "1.0", "1.0.0", "10", "10.0" })
             states.SetState(new ExecutionScopeId(id), id, typeof(string), removeChildren: false);
 

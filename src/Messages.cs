@@ -8,9 +8,7 @@ public class Messages
     
     private readonly Lock _lock = new();
     private readonly AsyncGate _gate;
-    private readonly Func<IEnumerable<int>, Task> _deliveredMessageIdsCallback;
 
-    private readonly List<int> _deliveredIds = new List<int>();
     //todo add idempotency keys - private readonly 
     
     //deliver...
