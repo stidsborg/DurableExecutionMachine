@@ -27,8 +27,10 @@ public class StatesTests
     [TestMethod]
     public async Task DeserializeToDictionary_ReturnsCapturedValues()
     {
-        var states = new States(new RunningAndWaiting());
-        var ctx = new Context(new ExecutionScope(), new AsyncGate(), states, messages: null!);
+        var runningAndWaiting = new RunningAndWaiting();
+        var states = new States(runningAndWaiting);
+        var ctx = new Context(new ExecutionScope("", 0), new AsyncGate(), states, messages: null!, runningAndWaiting);
+        ctx.Scope.SetRoot();
 
         await ctx.Capture(() => Task.FromResult("hello"));
         await ctx.Capture(() => Task.FromResult(42));

@@ -13,13 +13,13 @@ public class StateMachine<TFlow, TParam, TResult>(
     private TFlow _flow;
     private Task<TResult> _flowTask;
     
-    internal Context Context { get; } = CreateContext(states);
+    internal Context Context { get; } = CreateContext(states, runningAndWaiting);
 
-    private static Context CreateContext(States states)
+    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting)
     {
         var gate = new AsyncGate();
         var messages = new Messages(gate, states);
-        return new Context(new ExecutionScope(), gate, states, messages);
+        return new Context(new ExecutionScope("", 0), gate, states, messages, runningAndWaiting);
     }
     
     //can this work with multiple threads?
@@ -33,6 +33,7 @@ public class StateMachine<TFlow, TParam, TResult>(
 
         async Task<TResult> RunFlow()
         {
+            Context.Scope.SetRoot();
             try
             {
                 return await startFlow(flow, param, Context);

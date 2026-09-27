@@ -1,26 +1,29 @@
 namespace DurableExecutionMachine;
 
-public class ExecutionScope
+public class ExecutionScope(string parent, int nextId)
 {
-    private readonly AsyncLocal<ExecutionScopeId> _parent =  new();
-    private readonly AsyncLocal<int> _nextId = new();
-    
-    public (ExecutionScopeId, int) Current => (_parent.Value!, _nextId.Value!);
+    private readonly AsyncLocal<Node> _current = new();
 
-    public void Restore(ExecutionScopeId parent, int nextId)
-    {
-        _parent.Value = parent;
-        _nextId.Value = nextId;
-    }
-    
-    public ExecutionScopeId GetNextId() => 
-        new(_parent.Value is null ? (_nextId.Value++).ToString() : _parent.Value.Id + "." + _nextId.Value++);
+    public void SetRoot()
+        => _current.Value = new Node(parent, nextId);
 
-    public void SetChild(ExecutionScopeId parentId)
+    public ExecutionScopeId GetNextId()
     {
-        _parent.Value = parentId;
-        _nextId.Value = 0;
+        var active = _current.Value!;
+
+        return active.ParentId == ""
+            ? new("" + active.NextId++)
+            : new(active.ParentId + "." + active.NextId++);
     }
-    
-    public override string ToString() => _parent.Value?.Id ?? "";
+
+    public void SetParent(ExecutionScopeId parentId)
+        => _current.Value = new Node(parentId.Id, nextId: 0);
+
+    public override string ToString() => _current.Value!.ParentId;
+
+    private sealed class Node(string parentId, int nextId)
+    {
+        public readonly string ParentId = parentId;
+        public int NextId = nextId;
+    }
 }

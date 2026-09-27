@@ -29,7 +29,7 @@ public class RunningAndWaiting
             return _resumed.Task;
         }
     }
-
+    
     public void SubflowStarted()
     {
         lock (_lock)
@@ -42,6 +42,23 @@ public class RunningAndWaiting
         {
             Total--;
             SignalIfAllSuspended();
+        }
+    }
+    
+    public async Task ResumeSubflow()
+    {
+        while (true)
+        {
+            Task resumed;
+            lock (_lock)
+            {
+                if (!_suspending)
+                    return;
+
+                resumed = _resumed.Task;
+            }
+
+            await resumed;
         }
     }
 
