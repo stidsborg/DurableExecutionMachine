@@ -4,8 +4,9 @@ public class TimeoutsManager : IDisposable
 {
     private readonly Lock _lock = new Lock();
     private readonly Dictionary<ExecutionScopeId, RegisteredTimeout> _timeouts = new();
+    private bool _disposed;
     
-    private record RegisteredTimeout(DateTime Timeout, Action Callback, CancellationTokenSource Cts);
+    private record RegisteredTimeout(DateTime Timeout, TaskCompletionSource Tcs);
 
     public DateTime? MinimumTimeout
     {
@@ -17,6 +18,28 @@ public class TimeoutsManager : IDisposable
                     : null;
         }
     }
+    
+    public void NotifyExpiredTimeouts()
+    {
+        var now = DateTime.UtcNow;
+        List<RegisteredTimeout> expired;
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+            
+            expired = new List<RegisteredTimeout>();
+            foreach (var (id, registeredTimeout) in _timeouts.ToList())
+                if (registeredTimeout.Timeout <= now)
+                {
+                    expired.Add(registeredTimeout);
+                    _timeouts.Remove(id);
+                }
+        }
+
+        foreach (var registeredTimeout in expired)
+            registeredTimeout.Tcs.SetResult();
+    }
 
     public void NotifyTimeoutExpired(ExecutionScopeId id)
     {
@@ -27,7 +50,7 @@ public class TimeoutsManager : IDisposable
             _timeouts.Remove(id);
         }
         
-        registeredTimeout?.Callback.Invoke();
+        registeredTimeout?.Tcs.SetResult();;
     }
 
     public void CancelTimeout(ExecutionScopeId id)
@@ -36,28 +59,24 @@ public class TimeoutsManager : IDisposable
             _timeouts.Remove(id);
     }
     
-    public void RegisterTimeout(ExecutionScopeId id, DateTime timeout, Action timeoutCallback)
+    public Task RegisterTimeout(ExecutionScopeId id, DateTime timeout)
     {
-        var cts = new CancellationTokenSource();
+        var tcs = new TaskCompletionSource();
         lock (_lock)
-            _timeouts[id] = new RegisteredTimeout(timeout, timeoutCallback, cts);
+        {
+            if (!MinimumTimeout.HasValue || timeout < MinimumTimeout.Value)
+                Task.Delay((timeout - DateTime.UtcNow).ZeroIfNegative())
+                    .ContinueWith(_ => NotifyExpiredTimeouts());
 
-        var delay = timeout - DateTime.UtcNow;
-        delay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
-
-        _ = Task.Delay(delay, cts.Token).ContinueWith(
-            _ => NotifyTimeoutExpired(id),
-            TaskContinuationOptions.OnlyOnRanToCompletion
-        ); 
+            _timeouts[id] = new RegisteredTimeout(timeout, tcs);
+        }
+        
+        return tcs.Task;
     }
 
     public void Dispose()
     {
-        List<CancellationTokenSource> ctss;
         lock (_lock)
-            ctss = _timeouts.Values.Select(t => t.Cts).ToList();
-
-        foreach (var cts in ctss)
-            cts.Cancel();
+            _disposed = true;
     }
 }
