@@ -2,7 +2,7 @@ namespace DurableExecutionMachine;
 
 public class TimeoutsManager : IDisposable
 {
-    private readonly Lock _lock = new Lock();
+    private readonly Lock _lock = new();
     private readonly Dictionary<ExecutionScopeId, RegisteredTimeout> _timeouts = new();
     private readonly Timer _timer;
     private bool _disposed;
@@ -47,19 +47,7 @@ public class TimeoutsManager : IDisposable
         foreach (var registeredTimeout in expired)
             registeredTimeout.Tcs.SetResult();
     }
-
-    public void NotifyTimeoutExpired(ExecutionScopeId id)
-    {
-        RegisteredTimeout? registeredTimeout;
-        lock (_lock)
-        {
-            _timeouts.TryGetValue(id, out registeredTimeout);
-            _timeouts.Remove(id);
-        }
-        
-        registeredTimeout?.Tcs.SetResult();;
-    }
-
+    
     public void CancelTimeout(ExecutionScopeId id)
     {
         lock (_lock)
