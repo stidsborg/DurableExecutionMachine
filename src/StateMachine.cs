@@ -17,9 +17,8 @@ public class StateMachine<TFlow, TParam, TResult>(
 
     private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting)
     {
-        var gate = new AsyncGate();
-        var messages = new Messages(gate, states);
-        return new Context(new ExecutionScope("", 0), gate, states, messages, runningAndWaiting);
+        var messages = new Messages(states);
+        return new Context(new ExecutionScope("", 0), states, messages, runningAndWaiting);
     }
     
     //can this work with multiple threads?

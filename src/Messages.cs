@@ -7,15 +7,13 @@ public class Messages
     private int _nextSubscriptionId = 0;
     
     private readonly Lock _lock = new();
-    private readonly AsyncGate _gate;
 
     //todo add idempotency keys - private readonly 
     
     //deliver...
 
-    public Messages(AsyncGate gate, States states)
+    public Messages(States states)
     {
-        _gate = gate;
     }
 
     public Task<object?> Subscribe(

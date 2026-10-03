@@ -2,16 +2,14 @@ namespace DurableExecutionMachine;
 
 public class Context
 {
-    private readonly AsyncGate _gate;
     private readonly States _states;
     private readonly Messages _messages;
     private readonly RunningAndWaiting _runningAndWaiting;
     
     internal ExecutionScope Scope { get; }
     
-    public Context(ExecutionScope scope, AsyncGate gate, States states, Messages messages, RunningAndWaiting runningAndWaiting)
+    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting)
     {
-        _gate = gate;
         _states = states;
         Scope = scope;
         _messages = messages;
@@ -83,7 +81,7 @@ public class Context
         {
             Scope.SetParent(id);
             _runningAndWaiting.SubflowStarted();
-            await _gate.Start(id); //todo remove
+            await _runningAndWaiting.SuspendIfNeeded();
             try
             {
                 var result = await subTask();
@@ -93,7 +91,6 @@ public class Context
             }
             finally
             {
-                _gate.Complete(id);
                 _runningAndWaiting.SubflowCompleted();
             }
         }
