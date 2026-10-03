@@ -4,9 +4,13 @@ public class TimeoutsManager : IDisposable
 {
     private readonly Lock _lock = new Lock();
     private readonly Dictionary<ExecutionScopeId, RegisteredTimeout> _timeouts = new();
+    private readonly Timer _timer;
     private bool _disposed;
     
     private record RegisteredTimeout(DateTime Timeout, TaskCompletionSource Tcs);
+
+    public TimeoutsManager()
+        => _timer = new Timer(_ => NotifyExpiredTimeouts(), state: null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     public DateTime? MinimumTimeout
     {
@@ -35,6 +39,9 @@ public class TimeoutsManager : IDisposable
                     expired.Add(registeredTimeout);
                     _timeouts.Remove(id);
                 }
+
+            if (MinimumTimeout is { } nextTimeout)
+                ScheduleWakeUp(nextTimeout);
         }
 
         foreach (var registeredTimeout in expired)
@@ -65,8 +72,7 @@ public class TimeoutsManager : IDisposable
         lock (_lock)
         {
             if (!MinimumTimeout.HasValue || timeout < MinimumTimeout.Value)
-                Task.Delay((timeout - DateTime.UtcNow).ZeroIfNegative())
-                    .ContinueWith(_ => NotifyExpiredTimeouts());
+                ScheduleWakeUp(timeout);
 
             _timeouts[id] = new RegisteredTimeout(timeout, tcs);
         }
@@ -74,9 +80,20 @@ public class TimeoutsManager : IDisposable
         return tcs.Task;
     }
 
+    private void ScheduleWakeUp(DateTime timeout)
+    {
+        var delay = (timeout - DateTime.UtcNow)
+            .ZeroIfNegative()
+            .CapAtOneDay();
+        
+        _timer.Change(delay, Timeout.InfiniteTimeSpan);
+    }
+
     public void Dispose()
     {
         lock (_lock)
             _disposed = true;
+
+        _timer.Dispose();
     }
 }
