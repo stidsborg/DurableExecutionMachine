@@ -8,6 +8,12 @@ public class States(RunningAndWaiting runningAndWaiting)
     private readonly Lock _lock = new();
 
     internal RunningAndWaiting RunningAndWaiting { get; } = runningAndWaiting;
+
+    public void Lock(Action doWhileLocked)
+    {
+        lock (_lock)
+            doWhileLocked();
+    }
     
     public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
     {
@@ -27,6 +33,26 @@ public class States(RunningAndWaiting runningAndWaiting)
             _states[id] = [];
             if (removeChildren)
                 RemoveChildren(id);
+        }
+    }
+    
+    public bool TryAddNull(ExecutionScopeId id, bool removeChildren)
+        => TryAdd(id, [], removeChildren);
+
+    public bool TryAddState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
+        => TryAdd(id, Serialize(instance, instanceType), removeChildren);
+
+    private bool TryAdd(ExecutionScopeId id, byte[] data, bool removeChildren)
+    {
+        lock (_lock)
+        {
+            if (!_states.TryAdd(id, data))
+                return false;
+
+            if (removeChildren)
+                RemoveChildren(id);
+
+            return true;
         }
     }
     
