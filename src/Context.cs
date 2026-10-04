@@ -5,15 +5,17 @@ public class Context
     private readonly States _states;
     private readonly Messages _messages;
     private readonly RunningAndWaiting _runningAndWaiting;
+    private readonly TimeoutsManager _timeoutsManager;
     
     internal ExecutionScope Scope { get; }
     
-    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting)
+    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager)
     {
         _states = states;
         Scope = scope;
         _messages = messages;
         _runningAndWaiting = runningAndWaiting;
+        _timeoutsManager = timeoutsManager;
     }
 
     public Task<T> Capture<T>(Func<Task<T>> work, bool flush = true)
@@ -60,18 +62,24 @@ public class Context
     public Task<T> Capture<T>(Func<T> work, bool flush = true)
         => Capture(() => Task.FromResult(work()), flush);
     
-    public Task Delay(TimeSpan delay)
+    public async Task Delay(TimeSpan delay)
     {
-        /*
-        var wakeUpAt = _states.SetState()
-        var wakeUpIn = DateTime.UtcNow - wakeUpAt;
-        if (wakeUpIn <= TimeSpan.Zero)
-            return Task.CompletedTask;
-        */
-        throw new NotImplementedException();
+        var timeoutId = Scope.GetNextId();
+        var timeoutAt = _states
+            .Deserialize(timeoutId, out var hasTimeout)
+            .CastTo<DateTime>();
+
+        if (!hasTimeout)
+        {
+            timeoutAt = DateTime.UtcNow + delay;
+            _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeChildren: false);           
+        }
+
+        var expiresTask = _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt);
+        _runningAndWaiting.SubflowSuspended();
+        await expiresTask;
+        await _runningAndWaiting.ResumeSubflow();
     }
-    
-    
     
     public Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
     {

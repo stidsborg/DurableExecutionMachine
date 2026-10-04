@@ -3,9 +3,8 @@ namespace DurableExecutionMachine;
 public class RunningAndWaiting
 {
     private readonly Lock _lock = new();
-
-    private bool _suspending;
-    private TaskCompletionSource _resumed = NewTcs();
+    
+    private TaskCompletionSource? _shouldSuspend;
     private TaskCompletionSource? _allSuspended;
 
     public int Total { get; private set; }
@@ -17,16 +16,46 @@ public class RunningAndWaiting
             return Suspended == Total;
     }
 
-    public Task SuspendIfNeeded()
+    public async Task SuspendIfNeeded()
     {
         lock (_lock)
         {
-            if (!_suspending)
-                return Task.CompletedTask;
+            if (_shouldSuspend == null)
+                return;
 
             Suspended++;
             SignalIfAllSuspended();
-            return _resumed.Task;
+        }
+
+        await ResumeSubflow();
+    }
+    
+    public async Task ResumeSubflow()
+    {
+        while (true)
+        {
+            TaskCompletionSource shouldSuspend;
+            lock (_lock)
+            {
+                if (_shouldSuspend == null)
+                {
+                    Suspended--;
+                    return;
+                }
+                
+                shouldSuspend = _shouldSuspend;         
+            }
+            
+            await shouldSuspend.Task;
+        }
+    }
+    
+    public void SubflowSuspended()
+    {
+        lock (_lock)
+        {
+            Suspended++;
+            SignalIfAllSuspended();
         }
     }
     
@@ -44,43 +73,27 @@ public class RunningAndWaiting
             SignalIfAllSuspended();
         }
     }
-    
-    public async Task ResumeSubflow()
-    {
-        while (true)
-        {
-            Task resumed;
-            lock (_lock)
-            {
-                if (!_suspending)
-                    return;
-
-                resumed = _resumed.Task;
-            }
-
-            await resumed;
-        }
-    }
 
     public void Suspend()
     {
         lock (_lock)
-            _suspending = true;
+            _shouldSuspend ??= NewTcs();
     }
 
     public void Resume()
     {
-        TaskCompletionSource resumed;
+        TaskCompletionSource? shouldSuspend;
         lock (_lock)
         {
-            _suspending = false;
-            Suspended = 0;
+            if (_shouldSuspend == null)
+                return;
+            
+            shouldSuspend = _shouldSuspend;
+            _shouldSuspend = null;
             _allSuspended = null;
-            resumed = _resumed;
-            _resumed = NewTcs();
         }
 
-        resumed.SetResult();
+        shouldSuspend.SetResult();
     }
 
     public Task WaitForAllSuspended()
@@ -100,8 +113,7 @@ public class RunningAndWaiting
         if (_allSuspended is null || Suspended != Total)
             return;
 
-        _allSuspended.SetResult();
-        _allSuspended = null;
+        _allSuspended.TrySetResult();
     }
 
     private static TaskCompletionSource NewTcs() => new(TaskCreationOptions.RunContinuationsAsynchronously);

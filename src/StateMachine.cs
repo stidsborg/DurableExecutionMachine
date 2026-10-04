@@ -13,12 +13,12 @@ public class StateMachine<TFlow, TParam, TResult>(
     private TFlow _flow;
     private Task<TResult> _flowTask;
     
-    internal Context Context { get; } = CreateContext(states, runningAndWaiting);
+    internal Context Context { get; } = CreateContext(states, runningAndWaiting, timeoutsManager);
 
-    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting)
+    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager)
     {
         var messages = new Messages(states);
-        return new Context(new ExecutionScope("", 0), states, messages, runningAndWaiting);
+        return new Context(new ExecutionScope("", 0), states, messages, runningAndWaiting, timeoutsManager);
     }
     
     //can this work with multiple threads?

@@ -29,7 +29,7 @@ public class StatesTests
     {
         var runningAndWaiting = new RunningAndWaiting();
         var states = new States(runningAndWaiting);
-        var ctx = new Context(new ExecutionScope("", 0), states, messages: null!, runningAndWaiting);
+        var ctx = new Context(new ExecutionScope("", 0), states, messages: null!, runningAndWaiting, new TimeoutsManager());
         ctx.Scope.SetRoot();
 
         await ctx.Capture(() => Task.FromResult("hello"));
