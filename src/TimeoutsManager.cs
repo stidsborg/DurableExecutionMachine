@@ -7,7 +7,7 @@ public class TimeoutsManager : IDisposable
     private readonly Timer _timer;
     private bool _disposed;
     
-    private record RegisteredTimeout(DateTime Timeout, TaskCompletionSource Tcs);
+    private record RegisteredTimeout(DateTime Timeout, Action Callback);
 
     public TimeoutsManager()
         => _timer = new Timer(_ => NotifyExpiredTimeouts(), state: null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -45,7 +45,7 @@ public class TimeoutsManager : IDisposable
         }
 
         foreach (var registeredTimeout in expired)
-            registeredTimeout.Tcs.SetResult();
+            registeredTimeout.Callback();
     }
     
     public void CancelTimeout(ExecutionScopeId id)
@@ -54,18 +54,15 @@ public class TimeoutsManager : IDisposable
             _timeouts.Remove(id);
     }
     
-    public Task RegisterTimeout(ExecutionScopeId id, DateTime timeout)
+    public void RegisterTimeout(ExecutionScopeId id, DateTime timeout, Action callback)
     {
-        var tcs = new TaskCompletionSource();
         lock (_lock)
         {
             if (!MinimumTimeout.HasValue || timeout < MinimumTimeout.Value)
                 ScheduleWakeUp(timeout);
 
-            _timeouts[id] = new RegisteredTimeout(timeout, tcs);
+            _timeouts[id] = new RegisteredTimeout(timeout, callback);
         }
-        
-        return tcs.Task;
     }
 
     private void ScheduleWakeUp(DateTime timeout)

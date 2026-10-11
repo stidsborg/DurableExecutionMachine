@@ -75,9 +75,10 @@ public class Context
             _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeChildren: false);           
         }
 
-        var expiresTask = _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt);
+        var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt, () => expired.TrySetResult());
         _runningAndWaiting.SubflowSuspended();
-        await expiresTask;
+        await expired.Task;
         await _runningAndWaiting.ResumeSubflow();
     }
     

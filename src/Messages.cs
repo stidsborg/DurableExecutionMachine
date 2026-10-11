@@ -45,18 +45,16 @@ public class Messages
             if (!timeoutExists)
                 _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeChildren: false);
 
-            _timeoutsManager
-                .RegisterTimeout(timeoutId, timeoutAt.Value)
-                .ContinueWith(_ =>
+            _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
+            {
+                if (_states.TryAddNull(messageId, removeChildren: false))
                 {
-                    if (_states.TryAddNull(messageId, removeChildren: false))
-                    {
-                        lock (_lock)
-                            _subscriptions.Remove(messageId);
-                        
-                        tcs.TrySetResult(null);
-                    }
-                }, TaskScheduler.Default);
+                    lock (_lock)
+                        _subscriptions.Remove(messageId);
+                    
+                    tcs.TrySetResult(null);
+                }
+            });
         }
         
         TryToDeliver();
