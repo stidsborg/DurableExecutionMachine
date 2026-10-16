@@ -4,22 +4,26 @@ public class Messages
 {
     private readonly States _states;
     private readonly TimeoutsManager _timeoutsManager;
-    private readonly List<object> _inbox = new();
+    private readonly Dictionary<ExecutionScopeId, object> _inbox = new();
     private readonly Dictionary<ExecutionScopeId, Subscription> _subscriptions = new();
-    private int _nextSubscriptionId = 0;
+
+    private readonly ExecutionScopeId _messagesExecutionScope;
+    private readonly ExecutionScopeId _idempotencyScope;
+    
+    private readonly Dictionary<string, long> _idempotencyKeys = new();
     
     private readonly Lock _lock = new();
-
-    //todo add idempotency keys - private readonly 
-    
-    //deliver...
     
     public Messages(States states, TimeoutsManager timeoutsManager)
     {
         _states = states;
         _timeoutsManager = timeoutsManager;
+        
+        ExecutionScopeId rootExecutionScope = new("-1");
+        _messagesExecutionScope = rootExecutionScope.CreateChild(0);
+        _idempotencyScope = rootExecutionScope.CreateChild(1);
     }
-
+    
     public Task<object?> Subscribe(
         Func<object, bool> filter, 
         ExecutionScopeId messageId, 
@@ -56,7 +60,8 @@ public class Messages
                 }
             });
         }
-        
+
+        _states.RunningAndWaiting.SubflowSuspended();
         TryToDeliver();
         return tcs.Task;
     }
@@ -79,9 +84,38 @@ public class Messages
         }
     }
 
-    public async Task Deliver(object message, int messageId, Func<int, Task>? deliveredCallback = null)
+    //difficult but task needs to reflect what the deliver did
+    public Task Deliver(object message, string? idempotencyKey) //todo after added to states let the caller know when that state has been persisted
     {
+        lock (_lock)
+        {
+            if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
+                return Task.CompletedTask;
+    
+            _states.Lock(doWhileLocked: () =>
+            {
+                var randomId = Random.Shared.NextInt64();
+                //consider seriializing before
+                if (idempotencyKey != null)
+                {
+                    _idempotencyKeys[idempotencyKey] = randomId;
+                    
+                    var idempotencyValueId = _idempotencyScope.CreateChild(randomId).CreateChild(0);
+                    var idempotencyTimestampId = _idempotencyScope.CreateChild(randomId).CreateChild(1);
+                    var created = DateTime.UtcNow.Ticks;
+                    _states.SetState(idempotencyValueId, instance: idempotencyKey, typeof(string), removeChildren: false);
+                    _states.SetState(idempotencyTimestampId, instance: created, typeof(long), removeChildren: false);
+                }
+                
+                var messageId = _messagesExecutionScope.CreateChild(randomId);
+                _states.SetState(messageId, message, message.GetType(), removeChildren: false);
+                _inbox[messageId] = message;
+            });
+        }
         
+        TryToDeliver();
+        //wait for sync to complete
+        return Task.CompletedTask;
     }
     
     private record Subscription(
