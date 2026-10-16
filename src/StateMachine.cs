@@ -49,7 +49,8 @@ public class StateMachine<TFlow, TParam, TResult>(
         try
         {
             await runningAndWaiting.WaitForAllSuspended();
-            await syncCallback(states.Serialize(), timeoutsManager.MinimumTimeout);
+            var (bytes, minimumTimeout) = states.Serialize();
+            await syncCallback(bytes, minimumTimeout);
         }
         finally
         {

@@ -191,14 +191,18 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
         return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value));
     }
 
-    public byte[] Serialize()
+    public SerializedStateMachine Serialize()
     {
         lock (_lock)
         {
             _syncedCount++;
-            return GetBytes();            
+            return new SerializedStateMachine(GetBytes(), TimeoutsManager.MinimumTimeout);
         }
     }
 
-    public Task Flush() => SyncCallback(Serialize(), TimeoutsManager.MinimumTimeout);
+    public Task Flush()
+    {
+        var (bytes, minimumTimeout) = Serialize();
+        return SyncCallback(bytes, minimumTimeout);
+    }
 }
