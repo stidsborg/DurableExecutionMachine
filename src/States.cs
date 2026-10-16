@@ -2,12 +2,24 @@ using System.Text.Json;
 
 namespace DurableExecutionMachine;
 
-public class States(RunningAndWaiting runningAndWaiting)
+public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
 {
     private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
     private readonly Lock _lock = new();
+    private int _syncedCount;
+
+    public int SyncedCount
+    {
+        get
+        {
+            lock (_lock)
+                return _syncedCount;
+        }
+    }
 
     internal RunningAndWaiting RunningAndWaiting { get; } = runningAndWaiting;
+    internal SyncCallback SyncCallback { get; } = syncCallback;
+    internal TimeoutsManager TimeoutsManager { get; } = timeoutsManager;
 
     public void Lock(Action doWhileLocked)
     {
@@ -155,13 +167,13 @@ public class States(RunningAndWaiting runningAndWaiting)
         return exists ? DeserializeState(bytes!) : null;
     }
 
-    public static States Deserialize(byte[] bytes, RunningAndWaiting runningAndWaiting)
+    public static States Deserialize(byte[] bytes, RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
     {
         var segments = ByteArrayMarshaller.Deserialize(bytes);
         if (segments.Count % 2 != 0)
             throw new InvalidOperationException("Serialized states must contain an even number of segments");
 
-        var states = new States(runningAndWaiting);
+        var states = new States(runningAndWaiting, syncCallback, timeoutsManager);
         for (var i = 0; i < segments.Count; i += 2)
         {
             var id = new ExecutionScopeId(segments[i]!.Value.ToStringFromUtf8Bytes());
@@ -174,9 +186,19 @@ public class States(RunningAndWaiting runningAndWaiting)
 
     public static Dictionary<ExecutionScopeId, object?> DeserializeToDictionary(byte[] bytes)
     {
-        var states = Deserialize(bytes, new RunningAndWaiting());
+        using var timeoutsManager = new TimeoutsManager();
+        var states = Deserialize(bytes, new RunningAndWaiting(), (_, _) => Task.CompletedTask, timeoutsManager);
         return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value));
     }
 
-    public Task Flush() => RunningAndWaiting.SuspendIfNeeded(); //todo persist states
+    public byte[] Serialize()
+    {
+        lock (_lock)
+        {
+            _syncedCount++;
+            return GetBytes();            
+        }
+    }
+
+    public Task Flush() => SyncCallback(Serialize(), TimeoutsManager.MinimumTimeout);
 }

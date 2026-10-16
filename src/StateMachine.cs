@@ -2,11 +2,10 @@ namespace DurableExecutionMachine;
 
 public class StateMachine<TFlow, TParam, TResult>(
     Func<TFlow, TParam, Context, Task<TResult>> startFlow,
-    Func<Task> syncCallback,
+    SyncCallback syncCallback,
     States states,
     RunningAndWaiting runningAndWaiting,
-    TimeoutsManager timeoutsManager,
-    SyncBehavior syncBehavior = SyncBehavior.Immediate
+    TimeoutsManager timeoutsManager
 ) 
 {
     private Dictionary<int, byte[]> _state;
@@ -50,12 +49,22 @@ public class StateMachine<TFlow, TParam, TResult>(
         try
         {
             await runningAndWaiting.WaitForAllSuspended();
-            await syncCallback();
+            await syncCallback(states.Serialize(), timeoutsManager.MinimumTimeout);
         }
         finally
         {
             runningAndWaiting.Resume();
         }
+    }
+
+    public async Task Suspend()
+    {
+        
+    }
+
+    public void Resume()
+    {
+        
     }
     
     public async Task DeliverMessage()

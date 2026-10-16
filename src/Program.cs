@@ -6,7 +6,7 @@ public static class Program
     {
         var factory = new StateMachineFactory<TestFlow, int, string>(
             startFlow: (testFlow, i, c) => testFlow.Run(i, c),
-            syncCallback: () => Task.CompletedTask
+            syncCallback: (_, _) => Task.CompletedTask
         );
 
         var stm = factory.New();
