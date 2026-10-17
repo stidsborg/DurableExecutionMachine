@@ -9,9 +9,9 @@ public class StatesTests
     public void GetBytes_RoundTrips_ThroughDeserialize()
     {
         var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
-        states.SetState(new ExecutionScopeId(""), "root", typeof(string), removeChildren: false);
-        states.SetState(new ExecutionScopeId("0.1"), 42, typeof(int), removeChildren: false);
-        states.SetState(new ExecutionScopeId("1"), [], removeChildren: false);
+        states.SetState(new ExecutionScopeId(""), "root", typeof(string), removeDescendants: false);
+        states.SetState(new ExecutionScopeId("0.1"), 42, typeof(int), removeDescendants: false);
+        states.SetState(new ExecutionScopeId("1"), [], removeDescendants: false);
 
         var restored = States.Deserialize(states.GetBytes(), new RunningAndWaiting(), NoSync, new TimeoutsManager());
 
@@ -48,13 +48,13 @@ public class StatesTests
     }
 
     [TestMethod]
-    public void RemoveChildren_RemovesDescendants_ButNotSiblingsWithSamePrefix()
+    public void RemoveDescendants_RemovesDescendants_ButNotSiblingsWithSamePrefix()
     {
         var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
         foreach (var id in new[] { "1", "1.0", "1.0.0", "10", "10.0" })
-            states.SetState(new ExecutionScopeId(id), id, typeof(string), removeChildren: false);
+            states.SetState(new ExecutionScopeId(id), id, typeof(string), removeDescendants: false);
 
-        states.RemoveChildren(new ExecutionScopeId("1"));
+        states.RemoveDescendants(new ExecutionScopeId("1"));
 
         var remaining = States.DeserializeToDictionary(states.GetBytes()).Keys.Select(k => k.Id).Order().ToList();
         CollectionAssert.AreEqual(new[] { "1", "10", "10.0" }, remaining);
