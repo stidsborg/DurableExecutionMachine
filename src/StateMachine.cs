@@ -17,6 +17,7 @@ public class StateMachine<TFlow, TParam, TResult>(
     private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager)
     {
         var messages = new Messages(states, timeoutsManager);
+        messages.Initialize();
         return new Context(new ExecutionScope("", 0), states, messages, runningAndWaiting, timeoutsManager);
     }
     

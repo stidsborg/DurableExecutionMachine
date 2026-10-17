@@ -7,4 +7,6 @@ public record ExecutionScopeId(string Id)
     
     public ExecutionScopeId CreateChild(long childId) 
         => new(Id == "" ? childId.ToString() : Id + "." + childId);
+
+    public long ChildId => long.Parse(Id[(Id.LastIndexOf('.') + 1)..]);
 }
