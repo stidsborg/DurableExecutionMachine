@@ -6,17 +6,8 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
 {
     private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
     private readonly Lock _lock = new();
-    private int _syncedCount;
-
-    public int SyncedCount
-    {
-        get
-        {
-            lock (_lock)
-                return _syncedCount;
-        }
-    }
-
+    private readonly AsyncSignal _signal = new();
+    
     internal RunningAndWaiting RunningAndWaiting { get; } = runningAndWaiting;
     internal SyncCallback SyncCallback { get; } = syncCallback;
     internal TimeoutsManager TimeoutsManager { get; } = timeoutsManager;
@@ -194,15 +185,35 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     public SerializedStateMachine Serialize()
     {
         lock (_lock)
-        {
-            _syncedCount++;
             return new SerializedStateMachine(GetBytes(), TimeoutsManager.MinimumTimeout);
-        }
     }
 
-    public Task Flush()
+    public Task NextFlush()
     {
-        var (bytes, minimumTimeout) = Serialize();
-        return SyncCallback(bytes, minimumTimeout);
+        lock (_lock)
+            return _signal.Wait();
+    }
+
+    public async Task Flush()
+    {
+        TaskCompletionSource? signalTcs = null;
+        byte[] bytes;
+        DateTime? minimumTimeout;
+
+        try
+        {
+            lock (_lock)
+            {
+                signalTcs = _signal.MoveNext();
+                (bytes, minimumTimeout) = Serialize();
+            }
+            
+            await SyncCallback(bytes, minimumTimeout);
+            signalTcs.TrySetResult();
+        }
+        catch (Exception e)
+        {
+            signalTcs!.TrySetException(e);
+        }
     }
 }
