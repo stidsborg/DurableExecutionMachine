@@ -84,7 +84,7 @@ public class Messages
         }
     }
 
-    public Task Deliver(object message, string? idempotencyKey)
+    public Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
     {
         Task nextSyncTask = Task.CompletedTask;
         lock (_lock)
@@ -97,7 +97,6 @@ public class Messages
                 nextSyncTask = _states.NextFlush();
                 
                 var randomId = Random.Shared.NextInt64();
-                //consider seriializing before
                 if (idempotencyKey != null)
                 {
                     _idempotencyKeys[idempotencyKey] = randomId;
@@ -116,7 +115,30 @@ public class Messages
         }
         
         TryToDeliver();
+
+        if (timeout is not null)
+            _ = FlushIfNotFlushedWithin(timeout.Value, nextSyncTask);
+
         return nextSyncTask;
+    }
+
+    private async Task FlushIfNotFlushedWithin(TimeSpan timeout, Task flushed)
+    {
+        using var cts = new CancellationTokenSource();
+        if (await Task.WhenAny(flushed, Task.Delay(timeout, cts.Token)) == flushed)
+        {
+            cts.Cancel();
+            return;
+        }
+
+        try
+        {
+            await _states.Flush();
+        }
+        catch
+        {
+            // the failure reaches the caller through the flushed task
+        }
     }
     
     private record Subscription(

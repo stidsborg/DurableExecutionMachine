@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 
 namespace DurableExecutionMachine;
@@ -7,6 +8,8 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
     private readonly Lock _lock = new();
     private readonly AsyncSignal _signal = new();
+    private readonly SemaphoreSlim _flushSemaphore = new(1);
+    private ExceptionDispatchInfo? _thrownException;
     
     internal RunningAndWaiting RunningAndWaiting { get; } = runningAndWaiting;
     internal SyncCallback SyncCallback { get; } = syncCallback;
@@ -197,23 +200,40 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     public async Task Flush()
     {
         TaskCompletionSource? signalTcs = null;
-        byte[] bytes;
-        DateTime? minimumTimeout;
 
+        await _flushSemaphore.WaitAsync();
         try
         {
+            byte[] bytes;
+            DateTime? minimumTimeout;
             lock (_lock)
             {
                 signalTcs = _signal.MoveNext();
+                if (_thrownException != null)
+                {
+                    signalTcs.TrySetException(_thrownException.SourceException);
+                    _thrownException.Throw();
+                }
+
                 (bytes, minimumTimeout) = Serialize();
             }
-            
+
             await SyncCallback(bytes, minimumTimeout);
             signalTcs.TrySetResult();
         }
         catch (Exception e)
         {
-            signalTcs!.TrySetException(e);
+            lock (_lock)
+            {
+                _thrownException ??= ExceptionDispatchInfo.Capture(e);
+                signalTcs!.TrySetException(e);
+            }
+
+            throw;
+        }
+        finally
+        {
+            _flushSemaphore.Release();
         }
     }
 }
