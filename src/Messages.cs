@@ -37,7 +37,7 @@ public class Messages
             foreach (var messageId in _states.GetDescendants(_messagesExecutionScope))
             {
                 var message = _states.Deserialize(messageId, out _)!;
-                _inbox[(int) messageId.Position] = message;
+                _inbox[(int) messageId.ChildId] = message;
             }
         }
     }
