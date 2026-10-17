@@ -34,9 +34,9 @@ public class Context
             {
                 var result = await work();
                 if (result == null)
-                    _states.SetNull(id, removeChildren: true);
+                    _states.SetNull(id, removeDescendants: true);
                 else
-                    _states.SetState(id, result, result.GetType(), removeChildren: true);
+                    _states.SetState(id, result, result.GetType(), removeDescendants: true);
 
                 if (flush)
                     await _states.Flush();
@@ -45,13 +45,13 @@ public class Context
             }
             catch (FatalWorkflowException e)
             {
-                _states.SetException(id, e, removeChildren: true);
+                _states.SetException(id, e, removeDescendants: true);
                 throw;
             }
             catch (Exception e)
             {
                 var workflowException = FatalWorkflowException.CreateNonGeneric(e);
-                _states.SetException(id, workflowException, removeChildren: true);
+                _states.SetException(id, workflowException, removeDescendants: true);
                 throw workflowException;
             }
         }
@@ -72,7 +72,7 @@ public class Context
         if (!hasTimeout)
         {
             timeoutAt = DateTime.UtcNow + delay;
-            _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeChildren: false);           
+            _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeDescendants: false);           
         }
 
         var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,7 +95,7 @@ public class Context
             {
                 var result = await subTask();
                 if (flush)
-                    _states.SetState(id, result!, result!.GetType(), removeChildren: true);
+                    _states.SetState(id, result!, result!.GetType(), removeDescendants: true);
                 return result;
             }
             finally

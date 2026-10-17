@@ -65,7 +65,7 @@ public class Messages
         if (timeoutAt is not null)
         {
             if (!timeoutExists)
-                _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeChildren: false);
+                _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeDescendants: false);
 
             _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
             {
@@ -75,7 +75,7 @@ public class Messages
                     if (!_subscriptions.Remove(messageId))
                         return;
 
-                    _states.SetNull(messageId, removeChildren: false);
+                    _states.SetNull(messageId, removeDescendants: false);
                     tcs.SetResult(null);
                 }
             });
@@ -110,7 +110,7 @@ public class Messages
                 // the timeout cannot have resolved the subscription as it removes the subscription under the same lock
                 _states.Lock(doWhileLocked: () =>
                 {
-                    _states.SetState(subscription.MessageId, message, message.GetType(), removeChildren: false);
+                    _states.SetState(subscription.MessageId, message, message.GetType(), removeDescendants: false);
                     _states.Remove(_messagesExecutionScope.CreateChild(number));
                 });
 
@@ -136,7 +136,7 @@ public class Messages
                 nextSyncTask = _states.NextFlush();
                 
                 var number = _nextMessageId++;
-                _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeChildren: false);
+                _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeDescendants: false);
                 
                 if (idempotencyKey is not null)
                 {
@@ -145,12 +145,12 @@ public class Messages
                     var idempotencyValueId = _idempotencyScope.CreateChild(number).CreateChild(0);
                     var idempotencyTimestampId = _idempotencyScope.CreateChild(number).CreateChild(1);
                     var created = DateTime.UtcNow.Ticks;
-                    _states.SetState(idempotencyValueId, instance: idempotencyKey, typeof(string), removeChildren: false);
-                    _states.SetState(idempotencyTimestampId, instance: created, typeof(long), removeChildren: false);
+                    _states.SetState(idempotencyValueId, instance: idempotencyKey, typeof(string), removeDescendants: false);
+                    _states.SetState(idempotencyTimestampId, instance: created, typeof(long), removeDescendants: false);
                 }
                 
                 var messageId = _messagesExecutionScope.CreateChild(number);
-                _states.SetState(messageId, message, message.GetType(), removeChildren: false);
+                _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
                 _inbox[number] = message;
             });
         }
