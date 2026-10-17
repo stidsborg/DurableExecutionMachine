@@ -84,16 +84,18 @@ public class Messages
         }
     }
 
-    //difficult but task needs to reflect what the deliver did
-    public Task Deliver(object message, string? idempotencyKey) //todo after added to states let the caller know when that state has been persisted
+    public Task Deliver(object message, string? idempotencyKey)
     {
+        Task nextSyncTask = Task.CompletedTask;
         lock (_lock)
         {
             if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
                 return Task.CompletedTask;
-    
+            
             _states.Lock(doWhileLocked: () =>
             {
+                nextSyncTask = _states.NextFlush();
+                
                 var randomId = Random.Shared.NextInt64();
                 //consider seriializing before
                 if (idempotencyKey != null)
@@ -114,8 +116,7 @@ public class Messages
         }
         
         TryToDeliver();
-        //wait for sync to complete
-        return Task.CompletedTask;
+        return nextSyncTask;
     }
     
     private record Subscription(

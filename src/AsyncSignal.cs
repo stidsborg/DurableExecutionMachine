@@ -2,52 +2,36 @@ namespace DurableExecutionMachine;
 
 public sealed class AsyncSignal
 {
-    private bool _raised = false;
-    private TaskCompletionSource? _waitingTcs;
+    private TaskCompletionSource _waitingTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _lock = new();
 
-    public async Task Wait()
+    public Task Wait()
     {
-        TaskCompletionSource waitingTcs;
         lock (_lock)
-        {
-            if (_raised)
-            {
-                _raised = false;
-                return;
-            }
-            
-            waitingTcs = _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _raised = false;
-        }
-
-        await waitingTcs.Task;
+            return _waitingTcs.Task;
     }
 
+    public TaskCompletionSource MoveNext()
+    {
+        TaskCompletionSource tcs;
+        lock (_lock)
+        {
+            tcs = _waitingTcs;
+            _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        return tcs;
+    }
+    
     public void Notify()
     {
-        TaskCompletionSource waitingTcs;
+        TaskCompletionSource tcs;
         lock (_lock)
         {
-            if (_waitingTcs == null)
-            {
-                _raised = true;
-                return;
-            }
-            
-            waitingTcs = _waitingTcs;
-            _waitingTcs = null;
+            tcs = _waitingTcs;
+            _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         
-        waitingTcs.SetResult();
-    }
-
-    public void Reset()
-    {
-        lock (_lock)
-        {
-            _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            _raised = false;            
-        }
+        tcs.TrySetResult();
     }
 }
