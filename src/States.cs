@@ -5,7 +5,8 @@ namespace DurableExecutionMachine;
 
 public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
 {
-    private readonly Dictionary<ExecutionScopeId, byte[]> _states = new();
+    private readonly Dictionary<ExecutionScopeId, Lazy<byte[]>> _states = new();
+    private static readonly Lazy<byte[]> Null = new(Array.Empty<byte>());
     private readonly Lock _lock = new();
     private readonly AsyncSignal _signal = new();
     private readonly SemaphoreSlim _flushSemaphore = new(1);
@@ -23,10 +24,9 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     
     public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
     {
-        var data = Serialize(instance, instanceType);
         lock (_lock)
         {
-            _states[id] = data;
+            _states[id] = new Lazy<byte[]>(() => Serialize(instance, instanceType));
             if (removeChildren)
                 RemoveChildren(id);
         }
@@ -36,19 +36,19 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     {
         lock (_lock)
         {
-            _states[id] = [];
+            _states[id] = Null;
             if (removeChildren)
                 RemoveChildren(id);
         }
     }
     
     public bool TryAddNull(ExecutionScopeId id, bool removeChildren)
-        => TryAdd(id, [], removeChildren);
+        => TryAdd(id, Null, removeChildren);
 
     public bool TryAddState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
-        => TryAdd(id, Serialize(instance, instanceType), removeChildren);
+        => TryAdd(id, new Lazy<byte[]>(() => Serialize(instance, instanceType)), removeChildren);
 
-    private bool TryAdd(ExecutionScopeId id, byte[] data, bool removeChildren)
+    private bool TryAdd(ExecutionScopeId id, Lazy<byte[]> data, bool removeChildren)
     {
         lock (_lock)
         {
@@ -64,10 +64,9 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     
     public void SetException(ExecutionScopeId id, FatalWorkflowException exception, bool removeChildren)
     {
-        var data = SerializeException(exception);
         lock (_lock)
         {
-            _states[id] = data;
+            _states[id] = new Lazy<byte[]>(() => SerializeException(exception));
             if (removeChildren)
                 RemoveChildren(id);
         }
@@ -77,7 +76,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     {
         lock (_lock)
         {
-            _states[id] = data;
+            _states[id] = new Lazy<byte[]>(data);
             if (removeChildren)
                 RemoveChildren(id);
         }
@@ -89,14 +88,14 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             _states.Keys.Where(id.IsChild).ToList().ForEach(childId => _states.Remove(childId));
     }
 
-    private byte[] Serialize(object instance, Type instanceType)
+    private static byte[] Serialize(object instance, Type instanceType)
     {
         var json = JsonSerializer.Serialize(instance, instanceType).ToUtf8Bytes();
         var type = instanceType.SimpleQualifiedName().ToUtf8Bytes();
         return ByteArrayMarshaller.Serialize(type, json);
     }
 
-    private byte[] SerializeException(FatalWorkflowException exception)
+    private static byte[] SerializeException(FatalWorkflowException exception)
     {
         var (exceptionMessage, exceptionStackTrace, exceptionType) = 
             exception.ToStoredException();
@@ -145,7 +144,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             foreach (var (key, value) in _states)
             {
                 segments[i++] = key.Id.ToUtf8Bytes();
-                segments[i++] = value;
+                segments[i++] = value.Value;
             }
 
             return ByteArrayMarshaller.Serialize(segments);
@@ -154,11 +153,11 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
 
     public object? Deserialize(ExecutionScopeId id, out bool exists)
     {
-        byte[]? bytes;
+        Lazy<byte[]>? bytes;
         lock (_lock)
             exists = _states.TryGetValue(id, out bytes);
 
-        return exists ? DeserializeState(bytes!) : null;
+        return exists ? DeserializeState(bytes!.Value) : null;
     }
 
     public static States Deserialize(byte[] bytes, RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
@@ -172,7 +171,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
         {
             var id = new ExecutionScopeId(segments[i]!.Value.ToStringFromUtf8Bytes());
             var data = segments[i + 1]!.Value.ToArray();
-            states._states[id] = data;
+            states._states[id] = new Lazy<byte[]>(data);
         }
 
         return states;
@@ -182,7 +181,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     {
         using var timeoutsManager = new TimeoutsManager();
         var states = Deserialize(bytes, new RunningAndWaiting(), (_, _) => Task.CompletedTask, timeoutsManager);
-        return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value));
+        return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value.Value));
     }
 
     public SerializedStateMachine Serialize()
