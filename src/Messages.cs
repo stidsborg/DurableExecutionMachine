@@ -51,12 +51,14 @@ public class Messages
 
             _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
             {
-                if (_states.TryAddNull(messageId, removeChildren: false))
+                lock (_lock)
                 {
-                    lock (_lock)
-                        _subscriptions.Remove(messageId);
-                    
-                    tcs.TrySetResult(null);
+                    // the subscription is removed when a message is delivered to it
+                    if (!_subscriptions.Remove(messageId))
+                        return;
+
+                    _states.SetNull(messageId, removeChildren: false);
+                    tcs.SetResult(null);
                 }
             });
         }
@@ -80,7 +82,26 @@ public class Messages
     {
         lock (_lock)
         {
-            
+            foreach (var (inboxId, message) in _inbox.ToList())
+            foreach (var subscription in _subscriptions.Values.ToList())
+            {
+                if (!subscription.Filter(message))
+                    continue;
+
+                // moving the message from the inbox to the subscription is atomic with respect to flushes.
+                // the timeout cannot have resolved the subscription as it removes the subscription under the same lock
+                _states.Lock(doWhileLocked: () =>
+                {
+                    _states.SetState(subscription.MessageId, message, message.GetType(), removeChildren: false);
+                    _states.Remove(inboxId);
+                });
+
+                _timeoutsManager.CancelTimeout(subscription.TimeoutId);
+                _subscriptions.Remove(subscription.MessageId);
+                _inbox.Remove(inboxId);
+                subscription.CompletionSource.SetResult(message);
+                break;
+            }
         }
     }
 

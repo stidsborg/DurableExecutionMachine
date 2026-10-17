@@ -42,9 +42,6 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
         }
     }
     
-    public bool TryAddNull(ExecutionScopeId id, bool removeChildren)
-        => TryAdd(id, Null, removeChildren);
-
     public bool TryAddState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
         => TryAdd(id, new Lazy<byte[]>(() => Serialize(instance, instanceType)), removeChildren);
 
@@ -82,6 +79,12 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
         }
     }    
     
+    public void Remove(ExecutionScopeId id)
+    {
+        lock (_lock)
+            _states.Remove(id);
+    }
+
     public void RemoveChildren(ExecutionScopeId id)
     {
         lock (_lock)
