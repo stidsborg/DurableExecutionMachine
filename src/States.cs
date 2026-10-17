@@ -94,7 +94,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
     public List<ExecutionScopeId> GetDescendants(ExecutionScopeId id)
     {
         lock (_lock)
-            return _states.Keys.Where(id.IsChild).ToList();
+            return _states.Keys.Where(id.IsDescendant).ToList();
     }
 
     private static byte[] Serialize(object instance, Type instanceType)
