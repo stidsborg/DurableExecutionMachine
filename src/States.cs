@@ -22,60 +22,60 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             doWhileLocked();
     }
     
-    public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
+    public void SetState(ExecutionScopeId id, object instance, Type instanceType, bool removeDescendants)
     {
         lock (_lock)
         {
             _states[id] = new Lazy<byte[]>(() => Serialize(instance, instanceType));
-            if (removeChildren)
-                RemoveChildren(id);
+            if (removeDescendants)
+                RemoveDescendants(id);
         }
     }
     
-    public void SetNull(ExecutionScopeId id, bool removeChildren)
+    public void SetNull(ExecutionScopeId id, bool removeDescendants)
     {
         lock (_lock)
         {
             _states[id] = Null;
-            if (removeChildren)
-                RemoveChildren(id);
+            if (removeDescendants)
+                RemoveDescendants(id);
         }
     }
     
-    public bool TryAddState(ExecutionScopeId id, object instance, Type instanceType, bool removeChildren)
-        => TryAdd(id, new Lazy<byte[]>(() => Serialize(instance, instanceType)), removeChildren);
+    public bool TryAddState(ExecutionScopeId id, object instance, Type instanceType, bool removeDescendants)
+        => TryAdd(id, new Lazy<byte[]>(() => Serialize(instance, instanceType)), removeDescendants);
 
-    private bool TryAdd(ExecutionScopeId id, Lazy<byte[]> data, bool removeChildren)
+    private bool TryAdd(ExecutionScopeId id, Lazy<byte[]> data, bool removeDescendants)
     {
         lock (_lock)
         {
             if (!_states.TryAdd(id, data))
                 return false;
 
-            if (removeChildren)
-                RemoveChildren(id);
+            if (removeDescendants)
+                RemoveDescendants(id);
 
             return true;
         }
     }
     
-    public void SetException(ExecutionScopeId id, FatalWorkflowException exception, bool removeChildren)
+    public void SetException(ExecutionScopeId id, FatalWorkflowException exception, bool removeDescendants)
     {
         lock (_lock)
         {
             _states[id] = new Lazy<byte[]>(() => SerializeException(exception));
-            if (removeChildren)
-                RemoveChildren(id);
+            if (removeDescendants)
+                RemoveDescendants(id);
         }
     }    
     
-    public void SetState(ExecutionScopeId id, byte[] data, bool removeChildren)
+    public void SetState(ExecutionScopeId id, byte[] data, bool removeDescendants)
     {
         lock (_lock)
         {
             _states[id] = new Lazy<byte[]>(data);
-            if (removeChildren)
-                RemoveChildren(id);
+            if (removeDescendants)
+                RemoveDescendants(id);
         }
     }    
     
@@ -85,10 +85,10 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             _states.Remove(id);
     }
 
-    public void RemoveChildren(ExecutionScopeId id)
+    public void RemoveDescendants(ExecutionScopeId id)
     {
         lock (_lock)
-            _states.Keys.Where(id.IsChild).ToList().ForEach(childId => _states.Remove(childId));
+            _states.Keys.Where(id.IsDescendant).ToList().ForEach(descendantId => _states.Remove(descendantId));
     }
 
     private static byte[] Serialize(object instance, Type instanceType)
