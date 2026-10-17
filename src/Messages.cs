@@ -40,8 +40,6 @@ public class Messages
                 _inbox[(int) messageId.Position] = message;
             }
         }
-
-        TryToDeliver();
     }
     
     public Task<object?> Subscribe(
