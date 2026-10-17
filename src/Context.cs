@@ -26,12 +26,12 @@ public class Context
         {
             Scope.SetParent(id);
 
+            var prevResult = _states.Deserialize(id, out var hasPrevResult);
+            if (hasPrevResult)
+                return prevResult is FatalWorkflowException fatal ? throw fatal : (T)prevResult!;
+
             try
             {
-                var prevResult = _states.Deserialize(id, out var hasPrevResult);
-                if (hasPrevResult)
-                    return (T)prevResult!;
-
                 var result = await work();
                 if (result == null)
                     _states.SetNull(id, removeChildren: true);
