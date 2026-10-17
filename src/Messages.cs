@@ -21,12 +21,27 @@ public class Messages
         _timeoutsManager = timeoutsManager;
         
         var nextMessageId = _states
-            .Deserialize(_rootExecutionScope, out var exists)
+            .Deserialize(_rootExecutionScope, out _)
             as int?;
         _nextMessageId = nextMessageId ?? 0;
         
         _messagesExecutionScope = _rootExecutionScope.CreateChild(0);
         _idempotencyScope = _rootExecutionScope.CreateChild(1);
+    }
+
+    public void Initialize()
+    {
+        lock (_lock)
+        {
+            // messages still in the messages scope were not delivered to a subscription before the previous run ended
+            foreach (var messageId in _states.GetDescendants(_messagesExecutionScope))
+            {
+                var message = _states.Deserialize(messageId, out _)!;
+                _inbox[(int) messageId.Position] = message;
+            }
+        }
+
+        TryToDeliver();
     }
     
     public Task<object?> Subscribe(
@@ -125,7 +140,7 @@ public class Messages
                 var number = _nextMessageId++;
                 _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeChildren: false);
                 
-                if (idempotencyKey != null)
+                if (idempotencyKey is not null)
                 {
                     _idempotencyKeys[idempotencyKey] = number;
                     

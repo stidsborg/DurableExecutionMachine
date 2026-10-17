@@ -91,6 +91,12 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             _states.Keys.Where(id.IsChild).ToList().ForEach(childId => _states.Remove(childId));
     }
 
+    public List<ExecutionScopeId> GetDescendants(ExecutionScopeId id)
+    {
+        lock (_lock)
+            return _states.Keys.Where(id.IsChild).ToList();
+    }
+
     private static byte[] Serialize(object instance, Type instanceType)
     {
         var json = JsonSerializer.Serialize(instance, instanceType).ToUtf8Bytes();
