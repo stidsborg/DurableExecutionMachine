@@ -4,14 +4,15 @@ public class Messages
 {
     private readonly States _states;
     private readonly TimeoutsManager _timeoutsManager;
-    private readonly Dictionary<ExecutionScopeId, object> _inbox = new();
+    private readonly SortedDictionary<int, object> _inbox = new();
     private readonly Dictionary<ExecutionScopeId, Subscription> _subscriptions = new();
 
+    private readonly ExecutionScopeId _rootExecutionScope = new("-1");
     private readonly ExecutionScopeId _messagesExecutionScope;
     private readonly ExecutionScopeId _idempotencyScope;
     
     private readonly Dictionary<string, long> _idempotencyKeys = new();
-    
+    private int _nextMessageId;
     private readonly Lock _lock = new();
     
     public Messages(States states, TimeoutsManager timeoutsManager)
@@ -19,9 +20,13 @@ public class Messages
         _states = states;
         _timeoutsManager = timeoutsManager;
         
-        ExecutionScopeId rootExecutionScope = new("-1");
-        _messagesExecutionScope = rootExecutionScope.CreateChild(0);
-        _idempotencyScope = rootExecutionScope.CreateChild(1);
+        var nextMessageId = _states
+            .Deserialize(_rootExecutionScope, out var exists)
+            as int?;
+        _nextMessageId = nextMessageId ?? 0;
+        
+        _messagesExecutionScope = _rootExecutionScope.CreateChild(0);
+        _idempotencyScope = _rootExecutionScope.CreateChild(1);
     }
     
     public Task<object?> Subscribe(
@@ -82,7 +87,7 @@ public class Messages
     {
         lock (_lock)
         {
-            foreach (var (inboxId, message) in _inbox.ToList())
+            foreach (var (number, message) in _inbox.ToList())
             foreach (var subscription in _subscriptions.Values.ToList())
             {
                 if (!subscription.Filter(message))
@@ -93,12 +98,12 @@ public class Messages
                 _states.Lock(doWhileLocked: () =>
                 {
                     _states.SetState(subscription.MessageId, message, message.GetType(), removeChildren: false);
-                    _states.Remove(inboxId);
+                    _states.Remove(_messagesExecutionScope.CreateChild(number));
                 });
 
                 _timeoutsManager.CancelTimeout(subscription.TimeoutId);
                 _subscriptions.Remove(subscription.MessageId);
-                _inbox.Remove(inboxId);
+                _inbox.Remove(number);
                 subscription.CompletionSource.SetResult(message);
                 break;
             }
@@ -117,21 +122,23 @@ public class Messages
             {
                 nextSyncTask = _states.NextFlush();
                 
-                var randomId = Random.Shared.NextInt64();
+                var number = _nextMessageId++;
+                _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeChildren: false);
+                
                 if (idempotencyKey != null)
                 {
-                    _idempotencyKeys[idempotencyKey] = randomId;
+                    _idempotencyKeys[idempotencyKey] = number;
                     
-                    var idempotencyValueId = _idempotencyScope.CreateChild(randomId).CreateChild(0);
-                    var idempotencyTimestampId = _idempotencyScope.CreateChild(randomId).CreateChild(1);
+                    var idempotencyValueId = _idempotencyScope.CreateChild(number).CreateChild(0);
+                    var idempotencyTimestampId = _idempotencyScope.CreateChild(number).CreateChild(1);
                     var created = DateTime.UtcNow.Ticks;
                     _states.SetState(idempotencyValueId, instance: idempotencyKey, typeof(string), removeChildren: false);
                     _states.SetState(idempotencyTimestampId, instance: created, typeof(long), removeChildren: false);
                 }
                 
-                var messageId = _messagesExecutionScope.CreateChild(randomId);
+                var messageId = _messagesExecutionScope.CreateChild(number);
                 _states.SetState(messageId, message, message.GetType(), removeChildren: false);
-                _inbox[messageId] = message;
+                _inbox[number] = message;
             });
         }
         
