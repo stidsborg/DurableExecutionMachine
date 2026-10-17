@@ -22,16 +22,4 @@ public sealed class AsyncSignal
 
         return tcs;
     }
-    
-    public void Notify()
-    {
-        TaskCompletionSource tcs;
-        lock (_lock)
-        {
-            tcs = _waitingTcs;
-            _waitingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-        
-        tcs.TrySetResult();
-    }
 }
