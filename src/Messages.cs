@@ -52,7 +52,7 @@ public class Messages
         }
     }
     
-    public Task<object?> Subscribe(
+    public async Task<object?> Subscribe(
         Func<object, bool> filter, 
         ExecutionScopeId messageId, 
         ExecutionScopeId timeoutId, 
@@ -60,7 +60,7 @@ public class Messages
     {
         var message = _states.Deserialize(messageId, out var messageExists);
         if (messageExists)
-            return Task.FromResult(message);
+            return message;
         
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
    
@@ -91,9 +91,12 @@ public class Messages
             });
         }
 
-        _states.RunningAndWaiting.SubflowSuspended();
+        // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended
         TryToDeliver();
-        return tcs.Task;
+        _states.RunningAndWaiting.SubflowSuspended();
+        var result = await tcs.Task;
+        await _states.RunningAndWaiting.ResumeSubflow();
+        return result;
     }
 
     private void TryToDeliver()
@@ -103,7 +106,8 @@ public class Messages
             foreach (var (number, message) in _inbox.ToList())
             foreach (var subscription in _subscriptions.Values.ToList())
             {
-                if (!subscription.Filter(message))
+                // a throwing filter does not match the message, so the message stays in the inbox for other subscriptions
+                if (!Safe.Try(() => subscription.Filter(message), onError: _ => false))
                     continue;
 
                 // moving the message from the inbox to the subscription is atomic with respect to flushes.

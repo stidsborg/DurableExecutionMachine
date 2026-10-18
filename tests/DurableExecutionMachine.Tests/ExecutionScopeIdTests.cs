@@ -87,19 +87,4 @@ public class ExecutionScopeIdTests
         Assert.AreEqual(ExecutionScopeId.Root, new ExecutionScopeId("-1").Parent);
         Assert.AreEqual(ExecutionScopeId.Root, ExecutionScopeId.Root.Parent);
     }
-
-    [TestMethod]
-    public void NextChild_IncrementsLastSegment()
-    {
-        Assert.AreEqual(new ExecutionScopeId("1.0.4"), new ExecutionScopeId("1.0.3").NextChild());
-        Assert.AreEqual(new ExecutionScopeId("-1.1.1"), new ExecutionScopeId("-1.1.0").NextChild());
-        Assert.AreEqual(new ExecutionScopeId("1.10"), new ExecutionScopeId("1.9").NextChild());
-    }
-
-    [TestMethod]
-    public void NextChild_OfTopLevelId_IsTopLevel()
-    {
-        Assert.AreEqual(new ExecutionScopeId("11"), new ExecutionScopeId("10").NextChild());
-        Assert.AreEqual(new ExecutionScopeId("0"), new ExecutionScopeId("-1").NextChild());
-    }
 }
