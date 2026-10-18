@@ -26,5 +26,8 @@ not inside the `Capture`/`Deliver` call that handed it over.
 Ids for `Capture`, `Delay` and `Parallel` are positional (e.g. `0.1.1`): they are assigned by call order within
 the current scope. A replaying flow must make the same calls in the same order to find its stored results.
 
+Concurrent durable work must go through `Context.Parallel`. Starting `Capture`/`Delay` calls concurrently by other
+means (e.g. `Task.WhenAll` over helpers that share the context) makes their ids depend on scheduling and breaks replay.
+
 Changing a flow's code — e.g. inserting a `Capture` before an existing one — shifts the ids of later calls and
 breaks replay of executions that are already in flight. This is a known and accepted limitation.
