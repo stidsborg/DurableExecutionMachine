@@ -96,16 +96,6 @@ public class Messages
         return tcs.Task;
     }
 
-    private void RegisterTimeout()
-    {
-        
-    }
-
-    private void TrySetTimeout()
-    {
-        
-    }
-
     private void TryToDeliver()
     {
         lock (_lock)
