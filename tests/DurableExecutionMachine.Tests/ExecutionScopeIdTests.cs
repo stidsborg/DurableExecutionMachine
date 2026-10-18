@@ -40,4 +40,51 @@ public class ExecutionScopeIdTests
         Assert.IsTrue(root.IsDescendant(new ExecutionScopeId("10.2")));
         Assert.IsFalse(root.IsDescendant(new ExecutionScopeId("")));
     }
+
+    [TestMethod]
+    public void IsChild_IsTrue_ForChildrenOnly()
+    {
+        var id = new ExecutionScopeId("1");
+
+        Assert.IsTrue(id.IsChild(new ExecutionScopeId("1.0")));
+        Assert.IsTrue(id.IsChild(new ExecutionScopeId("1.12")));
+        Assert.IsFalse(id.IsChild(new ExecutionScopeId("1.0.3")));
+    }
+
+    [TestMethod]
+    public void IsChild_IsFalse_ForSelfAncestorsAndSiblingsWithSamePrefix()
+    {
+        var id = new ExecutionScopeId("1.0");
+
+        Assert.IsFalse(id.IsChild(new ExecutionScopeId("1.0")));
+        Assert.IsFalse(id.IsChild(new ExecutionScopeId("1")));
+        Assert.IsFalse(id.IsChild(new ExecutionScopeId("1.01")));
+        Assert.IsFalse(id.IsChild(new ExecutionScopeId("1.01.2")));
+    }
+
+    [TestMethod]
+    public void IsChild_ForRoot_IsTrueForTopLevelIdsOnly()
+    {
+        var root = new ExecutionScopeId("");
+
+        Assert.IsTrue(root.IsChild(new ExecutionScopeId("0")));
+        Assert.IsTrue(root.IsChild(new ExecutionScopeId("-1")));
+        Assert.IsFalse(root.IsChild(new ExecutionScopeId("10.2")));
+        Assert.IsFalse(root.IsChild(new ExecutionScopeId("")));
+    }
+
+    [TestMethod]
+    public void Parent_DropsLastSegment()
+    {
+        Assert.AreEqual(new ExecutionScopeId("1.0"), new ExecutionScopeId("1.0.3").Parent);
+        Assert.AreEqual(new ExecutionScopeId("-1.1"), new ExecutionScopeId("-1.1.12").Parent);
+    }
+
+    [TestMethod]
+    public void Parent_OfTopLevelIdAndRoot_IsRoot()
+    {
+        Assert.AreEqual(ExecutionScopeId.Root, new ExecutionScopeId("10").Parent);
+        Assert.AreEqual(ExecutionScopeId.Root, new ExecutionScopeId("-1").Parent);
+        Assert.AreEqual(ExecutionScopeId.Root, ExecutionScopeId.Root.Parent);
+    }
 }
