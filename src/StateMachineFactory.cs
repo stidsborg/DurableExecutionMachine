@@ -9,7 +9,7 @@ public class StateMachineFactory<TFlow, TParam, TResult>(
         var runningAndWaiting = new RunningAndWaiting();
         var timeoutsManager = new TimeoutsManager();
         return new StateMachine<TFlow, TParam, TResult>(
-            startFlow, syncCallback, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager);
+            startFlow, syncCallback, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow);
     }
 
     public StateMachine<TFlow, TParam, TResult> Deserialize(byte[] bytes)
@@ -18,7 +18,7 @@ public class StateMachineFactory<TFlow, TParam, TResult>(
         var timeoutsManager = new TimeoutsManager();
         var states = States.Deserialize(bytes, runningAndWaiting, syncCallback, timeoutsManager);
         return new StateMachine<TFlow, TParam, TResult>(
-            startFlow, syncCallback, states, runningAndWaiting, timeoutsManager
+            startFlow, syncCallback, states, runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow
         );
     }
 }

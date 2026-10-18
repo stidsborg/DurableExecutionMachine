@@ -4,6 +4,7 @@ public class Messages
 {
     private readonly States _states;
     private readonly TimeoutsManager _timeoutsManager;
+    private readonly UtcNow _utcNow;
     private readonly SortedDictionary<int, object> _inbox = new();
     private readonly Dictionary<ExecutionScopeId, Subscription> _subscriptions = new();
 
@@ -15,10 +16,11 @@ public class Messages
     private int _nextMessageId;
     private readonly Lock _lock = new();
     
-    public Messages(States states, TimeoutsManager timeoutsManager)
+    public Messages(States states, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
         _states = states;
         _timeoutsManager = timeoutsManager;
+        _utcNow = utcNow;
         
         var nextMessageId = _states
             .Deserialize(_rootExecutionScope, out _)
@@ -39,13 +41,13 @@ public class Messages
                 var message = _states.Deserialize(messageId, out _)!;
                 _inbox[(int) messageId.ChildId] = message;
             }
-
-            // idempotency keys are stored as <idempotency scope>.<message number>.0
+            
             foreach (var idempotencyValueId in _states.GetDescendants(_idempotencyScope).Where(id => id.ChildId == 0))
             {
                 var idempotencyKey = (string) _states.Deserialize(idempotencyValueId, out _)!;
-                var number = long.Parse(idempotencyValueId.Id.Split('.')[^2]);
-                _idempotencyKeys[idempotencyKey] = number;
+                var createdAtId = idempotencyValueId.Parent.CreateChild(1);
+                var createdAt = (long) _states.Deserialize(createdAtId, out _)!;
+                _idempotencyKeys[idempotencyKey] = createdAt;
             }
         }
     }
@@ -148,13 +150,9 @@ public class Messages
                 
                 if (idempotencyKey is not null)
                 {
-                    _idempotencyKeys[idempotencyKey] = number;
-                    
-                    var idempotencyValueId = _idempotencyScope.CreateChild(number).CreateChild(0);
-                    var idempotencyTimestampId = _idempotencyScope.CreateChild(number).CreateChild(1);
-                    var created = DateTime.UtcNow.Ticks;
-                    _states.SetState(idempotencyValueId, instance: idempotencyKey, typeof(string), removeDescendants: false);
-                    _states.SetState(idempotencyTimestampId, instance: created, typeof(long), removeDescendants: false);
+                    var createdAt = _utcNow().Ticks;
+                    _idempotencyKeys[idempotencyKey] = createdAt;
+                    SaveIdempotencyKey(number, idempotencyKey, createdAt);
                 }
                 
                 var messageId = _messagesExecutionScope.CreateChild(number);
@@ -188,6 +186,14 @@ public class Messages
         {
             // the failure reaches the caller through the flushed task
         }
+    }
+
+    private void SaveIdempotencyKey(int number, string idempotencyKey, long createdAt)
+    {
+        // each key is stored under <idempotency scope>.<message number> with the key at .0 and its creation ticks at .1
+        var idempotencyKeyId = _idempotencyScope.CreateChild(number);
+        _states.SetState(idempotencyKeyId.CreateChild(0), instance: idempotencyKey, typeof(string), removeDescendants: false);
+        _states.SetState(idempotencyKeyId.CreateChild(1), instance: createdAt, typeof(long), removeDescendants: false);
     }
     
     private record Subscription(

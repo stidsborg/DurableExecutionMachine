@@ -5,18 +5,19 @@ public class StateMachine<TFlow, TParam, TResult>(
     SyncCallback syncCallback,
     States states,
     RunningAndWaiting runningAndWaiting,
-    TimeoutsManager timeoutsManager
-) 
+    TimeoutsManager timeoutsManager,
+    UtcNow utcNow
+)
 {
     private Dictionary<int, byte[]> _state;
     private TFlow _flow;
     private Task<TResult> _flowTask;
-    
-    internal Context Context { get; } = CreateContext(states, runningAndWaiting, timeoutsManager);
 
-    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager)
+    internal Context Context { get; } = CreateContext(states, runningAndWaiting, timeoutsManager, utcNow);
+
+    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
-        var messages = new Messages(states, timeoutsManager);
+        var messages = new Messages(states, timeoutsManager, utcNow);
         messages.Initialize();
         return new Context(new ExecutionScope("", 0), states, messages, runningAndWaiting, timeoutsManager);
     }
