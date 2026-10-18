@@ -9,12 +9,17 @@ public class RunningAndWaiting
 
     public int Total { get; private set; }
     public int Suspended { get; private set; }
+    
+    // deliveries writing to states; all subflows only count as suspended once no delivery is in progress
+    private int _deliveries;
 
     public bool IsAllSuspended()
     {
         lock (_lock)
-            return Suspended == Total;
+            return AllSuspended;
     }
+
+    private bool AllSuspended => Suspended == Total && _deliveries == 0;
 
     public async Task SuspendIfNeeded()
     {
@@ -30,25 +35,7 @@ public class RunningAndWaiting
         await ResumeSubflow();
     }
     
-    public async Task ResumeSubflow()
-    {
-        while (true)
-        {
-            TaskCompletionSource shouldSuspend;
-            lock (_lock)
-            {
-                if (_shouldSuspend == null)
-                {
-                    Suspended--;
-                    return;
-                }
-                
-                shouldSuspend = _shouldSuspend;         
-            }
-            
-            await shouldSuspend.Task;
-        }
-    }
+    public Task ResumeSubflow() => WhenResumed(() => Suspended--);
     
     public void SubflowSuspended()
     {
@@ -70,6 +57,18 @@ public class RunningAndWaiting
         lock (_lock)
         {
             Total--;
+            SignalIfAllSuspended();
+        }
+    }
+
+    // a delivery waits while subflows are suspended so states does not change until they are resumed
+    public Task DeliveryStarted() => WhenResumed(() => _deliveries++);
+
+    public void DeliveryCompleted()
+    {
+        lock (_lock)
+        {
+            _deliveries--;
             SignalIfAllSuspended();
         }
     }
@@ -100,7 +99,7 @@ public class RunningAndWaiting
     {
         lock (_lock)
         {
-            if (Suspended == Total)
+            if (AllSuspended)
                 return Task.CompletedTask;
 
             _allSuspended ??= NewTcs();
@@ -108,9 +107,30 @@ public class RunningAndWaiting
         }
     }
 
+    // waits until subflows are not suspended and then applies the change under the same lock, so a suspend cannot come in between
+    private async Task WhenResumed(Action change)
+    {
+        while (true)
+        {
+            TaskCompletionSource shouldSuspend;
+            lock (_lock)
+            {
+                if (_shouldSuspend == null)
+                {
+                    change();
+                    return;
+                }
+                
+                shouldSuspend = _shouldSuspend;
+            }
+            
+            await shouldSuspend.Task;
+        }
+    }
+
     private void SignalIfAllSuspended()
     {
-        if (_allSuspended is null || Suspended != Total)
+        if (_allSuspended is null || !AllSuspended)
             return;
 
         _allSuspended.TrySetResult();
