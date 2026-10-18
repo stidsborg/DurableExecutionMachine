@@ -39,6 +39,14 @@ public class Messages
                 var message = _states.Deserialize(messageId, out _)!;
                 _inbox[(int) messageId.ChildId] = message;
             }
+
+            // idempotency keys are stored as <idempotency scope>.<message number>.0
+            foreach (var idempotencyValueId in _states.GetDescendants(_idempotencyScope).Where(id => id.ChildId == 0))
+            {
+                var idempotencyKey = (string) _states.Deserialize(idempotencyValueId, out _)!;
+                var number = long.Parse(idempotencyValueId.Id.Split('.')[^2]);
+                _idempotencyKeys[idempotencyKey] = number;
+            }
         }
     }
     
