@@ -1,29 +1,26 @@
 namespace DurableExecutionMachine;
 
-public class ExecutionScope(string parent, int nextId)
+public class ExecutionScope
 {
-    private readonly AsyncLocal<Node> _current = new();
+    // shared by reference so ids handed out inside a nested async method are visible to its caller,
+    // which a plain AsyncLocal<ExecutionScopeId> would lose when the nested method returns
+    private readonly AsyncLocal<Current> _current = new();
 
-    public void SetRoot()
-        => _current.Value = new Node(parent, nextId);
+    public void SetRoot() => _current.Value = new(ExecutionScopeId.Root);
+
+    public void SetParent(ExecutionScopeId parentId) => _current.Value = new(parentId);
 
     public ExecutionScopeId GetNextId()
     {
-        var active = _current.Value!;
-
-        return active.ParentId == ""
-            ? new("" + active.NextId++)
-            : new(active.ParentId + "." + active.NextId++);
+        var current = _current.Value!;
+        return current.ScopeId.CreateChild(current.NextChildId++);
     }
 
-    public void SetParent(ExecutionScopeId parentId)
-        => _current.Value = new Node(parentId.Id, nextId: 0);
+    public override string ToString() => _current.Value!.ScopeId.Id;
 
-    public override string ToString() => _current.Value!.ParentId;
-
-    private sealed class Node(string parentId, int nextId)
+    private sealed class Current(ExecutionScopeId scopeId)
     {
-        public readonly string ParentId = parentId;
-        public int NextId = nextId;
+        public readonly ExecutionScopeId ScopeId = scopeId;
+        public long NextChildId;
     }
 }

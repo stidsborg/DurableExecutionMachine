@@ -32,7 +32,7 @@ public class StatesTests
         var runningAndWaiting = new RunningAndWaiting();
         var timeoutsManager = new TimeoutsManager();
         var states = new States(runningAndWaiting, NoSync, timeoutsManager);
-        var ctx = new Context(new ExecutionScope("", 0), states, messages: null!, runningAndWaiting, timeoutsManager);
+        var ctx = new Context(new ExecutionScope(), states, messages: null!, runningAndWaiting, timeoutsManager);
         ctx.Scope.SetRoot();
 
         await ctx.Capture(() => Task.FromResult("hello"));

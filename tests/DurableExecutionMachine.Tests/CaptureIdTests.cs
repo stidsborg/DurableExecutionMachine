@@ -38,6 +38,40 @@ public class CaptureIdTests
         CollectionAssert.AreEqual(ExpectedScopes, scopes);
     }
 
+    [TestMethod]
+    public async Task Capture_AssignsNextId_AfterCaptureInsideHelperMethod()
+    {
+        var flow = new HelperFlow();
+        var stm = HelperFactory.New();
+
+        stm.Start(flow, param: 1);
+        await stm.Sync();
+
+        Assert.IsTrue(stm.IsCompleted);
+        CollectionAssert.AreEqual(new[] { "0", "1" }, flow.Scopes);
+    }
+
+    private static readonly StateMachineFactory<HelperFlow, int, string> HelperFactory =
+        new((f, i, ctx) => f.Run(i, ctx), (_, _) => Task.CompletedTask);
+
+    /// <summary>
+    /// The first capture happens inside a helper async method, the second in the caller after the helper returns.
+    /// </summary>
+    private class HelperFlow
+    {
+        public List<string> Scopes { get; } = [];
+
+        public async Task<string> Run(int input, Context ctx)
+        {
+            await Helper(ctx);
+            await ctx.Capture(() => { Scopes.Add(ctx.Scope.ToString()); return ""; });
+            return "";
+        }
+
+        private async Task Helper(Context ctx)
+            => await ctx.Capture(() => { Scopes.Add(ctx.Scope.ToString()); return ""; });
+    }
+
     private static readonly StateMachineFactory<RecordingFlow, int, string> Factory =
         new((f, i, ctx) => f.Run(i, ctx), (_, _) => Task.CompletedTask);
 
