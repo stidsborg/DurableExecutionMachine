@@ -19,7 +19,7 @@ public class StateMachine<TFlow, TParam, TResult>(
     {
         var messages = new Messages(states, timeoutsManager, utcNow);
         messages.Initialize();
-        return new Context(new ExecutionScope(), states, messages, runningAndWaiting, timeoutsManager);
+        return new Context(new ExecutionScope(), states, messages, runningAndWaiting, timeoutsManager, utcNow);
     }
     
     //can this work with multiple threads?

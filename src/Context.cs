@@ -6,16 +6,18 @@ public class Context
     private readonly Messages _messages;
     private readonly RunningAndWaiting _runningAndWaiting;
     private readonly TimeoutsManager _timeoutsManager;
+    private readonly UtcNow _utcNow;
     
     internal ExecutionScope Scope { get; }
     
-    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager)
+    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
         _states = states;
         Scope = scope;
         _messages = messages;
         _runningAndWaiting = runningAndWaiting;
         _timeoutsManager = timeoutsManager;
+        _utcNow = utcNow;
     }
 
     public Task<T> Capture<T>(Func<Task<T>> work, bool flush = true)
@@ -71,7 +73,7 @@ public class Context
 
         if (!hasTimeout)
         {
-            timeoutAt = DateTime.UtcNow + delay;
+            timeoutAt = _utcNow() + delay;
             _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeDescendants: false);           
         }
 
@@ -107,8 +109,20 @@ public class Context
         return ExecuteWork();
     }
 
-    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null)
+    public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null) where TMessage : class
     {
-        throw new NotImplementedException();
+        var messageId = Scope.GetNextId();
+        var timeoutId = messageId.CreateChild(0);
+        
+        var existingMessage = _states.Deserialize(messageId, out var hasMessage);
+        if (hasMessage)
+            return (TMessage?)existingMessage;
+
+        return (TMessage?) await _messages.Subscribe(
+            msg => msg is TMessage t && filter(t),
+            messageId,
+            timeoutId,
+            timeout == null ? null : _utcNow().Add(timeout.Value)
+        );
     }
 }

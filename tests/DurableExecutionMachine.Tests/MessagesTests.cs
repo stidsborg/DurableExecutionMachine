@@ -41,4 +41,30 @@ public class MessagesTests
         Assert.AreEqual("key", stored[new ExecutionScopeId("-1.1.0.0")]);
         Assert.AreEqual(createdAt.Ticks, stored[new ExecutionScopeId("-1.1.0.1")]);
     }
+
+    [TestMethod]
+    public async Task Deliver_SkipsMessage_WhenFilterThrows()
+    {
+        var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+        var messageId = new ExecutionScopeId("0");
+        var subscription = messages.Subscribe(
+            filter: m => int.Parse((string) m) > 0,
+            messageId,
+            timeoutId: messageId.CreateChild(0),
+            timeout: null
+        );
+
+        _ = messages.Deliver("not a number", idempotencyKey: null, timeout: null);
+        _ = messages.Deliver("5", idempotencyKey: null, timeout: null);
+
+        Assert.AreEqual("5", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+        var inbox = States
+            .DeserializeToDictionary(states.GetBytes())
+            .Where(kv => kv.Key.Id.StartsWith("-1.0."))
+            .Select(kv => kv.Value)
+            .ToList();
+        CollectionAssert.AreEqual(new object[] { "not a number" }, inbox);
+    }
 }
