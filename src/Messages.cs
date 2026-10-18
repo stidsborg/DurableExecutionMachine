@@ -127,40 +127,49 @@ public class Messages
         }
     }
 
-    public Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
+    public async Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
     {
+        await _states.RunningAndWaiting.DeliveryStarted();
         Task nextSyncTask = Task.CompletedTask;
-        lock (_lock)
+        // the delivery counts as in progress until DeliveryCompleted, so nothing in this block may await: a sync would wait for it to complete
+        try
         {
-            if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
-                return Task.CompletedTask;
-            
-            _states.Lock(doWhileLocked: () =>
+            lock (_lock)
             {
-                nextSyncTask = _states.NextFlush();
-                
-                var number = _nextMessageId++;
-                _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeDescendants: false);
-                
-                if (idempotencyKey is not null)
+                if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
+                    return;
+
+                _states.Lock(doWhileLocked: () =>
                 {
-                    var createdAt = _utcNow().Ticks;
-                    _idempotencyKeys[idempotencyKey] = createdAt;
-                    SaveIdempotencyKey(number, idempotencyKey, createdAt);
-                }
-                
-                var messageId = _messagesExecutionScope.CreateChild(number);
-                _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
-                _inbox[number] = message;
-            });
+                    nextSyncTask = _states.NextFlush();
+
+                    var number = _nextMessageId++;
+                    _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeDescendants: false);
+
+                    if (idempotencyKey is not null)
+                    {
+                        var createdAt = _utcNow().Ticks;
+                        _idempotencyKeys[idempotencyKey] = createdAt;
+                        SaveIdempotencyKey(number, idempotencyKey, createdAt);
+                    }
+
+                    var messageId = _messagesExecutionScope.CreateChild(number);
+                    _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
+                    _inbox[number] = message;
+                });
+            }
+
+            TryToDeliver();
         }
-        
-        TryToDeliver();
+        finally
+        {
+            _states.RunningAndWaiting.DeliveryCompleted();
+        }
 
         if (timeout is not null)
             _ = FlushIfNotFlushedWithin(timeout.Value, nextSyncTask);
 
-        return nextSyncTask;
+        await nextSyncTask;
     }
 
     private async Task FlushIfNotFlushedWithin(TimeSpan timeout, Task flushed)
