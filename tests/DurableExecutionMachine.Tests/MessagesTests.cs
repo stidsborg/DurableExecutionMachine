@@ -67,4 +67,27 @@ public class MessagesTests
             .ToList();
         CollectionAssert.AreEqual(new object[] { "not a number" }, inbox);
     }
+
+    [TestMethod]
+    public async Task Deliver_IsHeldBack_WhileSubflowsAreSuspended()
+    {
+        var runningAndWaiting = new RunningAndWaiting();
+        var states = new States(runningAndWaiting, NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+        runningAndWaiting.SubflowStarted();
+        var messageId = new ExecutionScopeId("0");
+        var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: null);
+
+        runningAndWaiting.Suspend();
+        await runningAndWaiting.WaitForAllSuspended().WaitAsync(TimeSpan.FromSeconds(5));
+        var bytesWhenSuspended = states.GetBytes();
+        _ = messages.Deliver("hello", idempotencyKey: null, timeout: null);
+
+        CollectionAssert.AreEqual(bytesWhenSuspended, states.GetBytes());
+        Assert.IsFalse(subscription.IsCompleted);
+
+        runningAndWaiting.Resume();
+        Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
 }
