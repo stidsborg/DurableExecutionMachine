@@ -205,7 +205,7 @@ public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallba
             return new SerializedStateMachine(GetBytes(), TimeoutsManager.MinimumTimeout);
     }
 
-    public Task NextFlush()
+    public Task WaitForNextFlush()
     {
         lock (_lock)
             return _signal.Wait();

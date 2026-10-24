@@ -149,7 +149,7 @@ public class Messages
 
     private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
     {
-        Task nextSyncTask = Task.CompletedTask;
+        Task nextFlush = Task.CompletedTask;
         lock (_lock)
         {
             if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
@@ -157,7 +157,7 @@ public class Messages
             
             _states.Lock(doWhileLocked: () =>
             {
-                nextSyncTask = _states.NextFlush();
+                nextFlush = _states.WaitForNextFlush();
                 
                 var number = _nextMessageId++;
                 _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
@@ -178,9 +178,9 @@ public class Messages
         TryToDeliver();
 
         if (timeout is not null)
-            _ = FlushIfNotFlushedWithin(timeout.Value, nextSyncTask);
+            _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);
 
-        return nextSyncTask;
+        return nextFlush;
     }
 
     private async Task FlushIfNotFlushedWithin(TimeSpan timeout, Task flushed)
