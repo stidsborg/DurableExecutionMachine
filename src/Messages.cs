@@ -65,40 +65,37 @@ public class Messages
             return message;
         
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+   
+        lock (_lock)
+            _subscriptions[messageId] = new Subscription(filter, tcs, messageId, timeoutId);
+        
+        // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended
+        TryToDeliver();
         
         var existingTimeout = (long?) _states.Deserialize(timeoutId, out var timeoutExists);
         DateTime? timeoutAt = timeoutExists
             ? new DateTime(existingTimeout!.Value, DateTimeKind.Utc)
             : timeout?.ToUniversalTime();
-
-        lock (_lock)
+        
+        if (!tcs.Task.IsCompleted && timeoutAt is not null)
         {
-            _subscriptions[messageId] = new Subscription(filter, tcs, messageId, timeoutId);
-            
-            // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended.
-            // deliver before registering the timeout so a message already in the inbox wins over an expired timeout
-            TryToDeliver();
-            
-            if (timeoutAt is not null && _subscriptions.ContainsKey(messageId))
+            if (!timeoutExists)
+                _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeDescendants: false);
+
+            _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
             {
-                if (!timeoutExists)
-                    _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeDescendants: false);
-
-                _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
+                lock (_lock)
                 {
-                    lock (_lock)
-                    {
-                        // the subscription is removed when a message is delivered to it
-                        if (!_subscriptions.Remove(messageId))
-                            return;
+                    // the subscription is removed when a message is delivered to it
+                    if (!_subscriptions.Remove(messageId))
+                        return;
 
-                        _states.SetNull(messageId, removeDescendants: false);
-                        tcs.SetResult(null);
-                    }
-                });
-            }
+                    _states.SetNull(messageId, removeDescendants: false);
+                    tcs.SetResult(null);
+                }
+            });
         }
-
+        
         _states.RunningAndWaiting.SubflowSuspended();
         var result = await tcs.Task;
         await _states.RunningAndWaiting.ResumeSubflow();
