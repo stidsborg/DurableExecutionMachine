@@ -150,14 +150,12 @@ public class Messages
     private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
     {
         Task nextFlush = Task.CompletedTask;
-        var duplicate = false;
         lock (_lock)
         {
             // a duplicate waits for the next flush, as the original delivery might not have been flushed yet
             if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
             {
                 nextFlush = _states.WaitForNextFlush();
-                duplicate = true;
             }
             else
                 _states.Lock(doWhileLocked: () =>
@@ -179,9 +177,8 @@ public class Messages
                     _inbox[number] = message;
                 });
         }
-
-        if (!duplicate)
-            TryToDeliver();
+        
+        TryToDeliver();
 
         if (timeout is not null)
             _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);
