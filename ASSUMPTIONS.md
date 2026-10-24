@@ -31,3 +31,34 @@ means (e.g. `Task.WhenAll` over helpers that share the context) makes their ids 
 
 Changing a flow's code — e.g. inserting a `Capture` before an existing one — shifts the ids of later calls and
 breaks replay of executions that are already in flight. This is a known and accepted limitation.
+
+## A scope must not complete while anything started inside it is still running
+
+A `Capture`, a `Parallel` or the flow itself must not complete while a `Parallel` subflow, a `Context.Message` or a
+`Context.Delay` started inside it is still running or waiting.
+
+A running subflow can only be restarted by replaying the code that started it. When a `Capture` or `Parallel`
+completes, its result is stored and its descendants are removed, and on replay its code is skipped. Anything still
+running inside it is then lost when the machine restarts, and its later writes end up under a parent whose
+descendants have already been removed.
+
+Waits cannot be cancelled. An abandoned `Context.Message` stays subscribed and takes the next matching message, so a
+later `Context.Message` never sees it. An abandoned wait also stays counted as suspended: the machine can then report
+all subflows as suspended while the flow is running, and a sync after the flow has completed never returns.
+
+`Task.WhenAny` over `Context.Message` or `Context.Delay` calls breaks this rule, as the losing wait is never awaited
+again. To wait for one of several messages, use a single `Context.Message` whose filter matches all of them. To wait
+for a message or a deadline, use its `timeout` parameter.
+
+## Choices that depend on timing must be captured
+
+When several tasks have already completed, `Task.WhenAny` returns the first of them in argument order. On replay,
+stored results complete immediately, so a choice that depended on which task finished first in the original run can
+turn out differently. Wrap such a choice in a `Context.Capture`, so it is stored and read back on replay:
+
+```csharp
+var first = await ctx.Capture(async () => await Task.WhenAny(a, b) == a ? "a" : "b");
+```
+
+As in .NET, the branches that lose a `Task.WhenAny` keep running. The enclosing scope must still not complete before
+they have.
