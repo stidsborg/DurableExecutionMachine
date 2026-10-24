@@ -122,4 +122,25 @@ public class MessagesTests
         runningAndWaiting.Resume();
         Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
     }
+
+    [TestMethod]
+    public async Task Subscribe_PrefersMessageInInbox_OverExpiredTimeout()
+    {
+        for (var i = 0; i < 1_000; i++)
+        {
+            var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+            var messages = new Messages(states, new TimeoutsManager(), Now);
+            messages.Initialize();
+            _ = messages.Deliver("hello", idempotencyKey: null, timeout: null);
+
+            var messageId = new ExecutionScopeId("0");
+            var timeoutId = messageId.CreateChild(0);
+            var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId, timeout: DateTime.UtcNow.AddMinutes(-1));
+
+            Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+            var stored = States.DeserializeToDictionary(states.GetBytes());
+            Assert.AreEqual("hello", stored[messageId]);
+            Assert.IsFalse(stored.ContainsKey(timeoutId));
+        }
+    }
 }

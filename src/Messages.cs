@@ -69,12 +69,15 @@ public class Messages
         lock (_lock)
             _subscriptions[messageId] = new Subscription(filter, tcs, messageId, timeoutId);
         
+        // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended
+        TryToDeliver();
+        
         var existingTimeout = (long?) _states.Deserialize(timeoutId, out var timeoutExists);
         DateTime? timeoutAt = timeoutExists
             ? new DateTime(existingTimeout!.Value, DateTimeKind.Utc)
             : timeout?.ToUniversalTime();
         
-        if (timeoutAt is not null)
+        if (!tcs.Task.IsCompleted && timeoutAt is not null)
         {
             if (!timeoutExists)
                 _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeDescendants: false);
@@ -92,9 +95,7 @@ public class Messages
                 }
             });
         }
-
-        // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended
-        TryToDeliver();
+        
         _states.RunningAndWaiting.SubflowSuspended();
         var result = await tcs.Task;
         await _states.RunningAndWaiting.ResumeSubflow();
