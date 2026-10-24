@@ -80,7 +80,6 @@ public class Messages
         TryToDeliver();
         
         if (!tcs.Task.IsCompleted && timeoutAt is not null)
-        {
             lock (_lock)
                 if (!tcs.Task.IsCompleted)
                     _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
@@ -95,7 +94,6 @@ public class Messages
                             tcs.SetResult(null);
                         }
                     });
-        }
         
         _states.RunningAndWaiting.SubflowSuspended();
         var result = await tcs.Task;
