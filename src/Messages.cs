@@ -188,7 +188,7 @@ public class Messages
         using var cts = new CancellationTokenSource();
         if (await Task.WhenAny(flushed, Task.Delay(timeout, cts.Token)) == flushed)
         {
-            cts.Cancel();
+            await cts.CancelAsync();
             return;
         }
 
