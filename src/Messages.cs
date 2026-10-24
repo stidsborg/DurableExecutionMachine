@@ -151,33 +151,29 @@ public class Messages
     {
         Task nextFlush = Task.CompletedTask;
         lock (_lock)
-        {
-            // a duplicate waits for the next flush, as the original delivery might not have been flushed yet
-            if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
+            _states.Lock(doWhileLocked: () =>
             {
                 nextFlush = _states.WaitForNextFlush();
-            }
-            else
-                _states.Lock(doWhileLocked: () =>
+
+                // a duplicate waits for the next flush, as the original delivery might not have been flushed yet
+                if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
+                    return;
+
+                var number = _nextMessageId++;
+                _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
+
+                if (idempotencyKey is not null)
                 {
-                    nextFlush = _states.WaitForNextFlush();
+                    var createdAt = _utcNow().Ticks;
+                    _idempotencyKeys[idempotencyKey] = createdAt;
+                    SaveIdempotencyKey(number, idempotencyKey, createdAt);
+                }
 
-                    var number = _nextMessageId++;
-                    _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
+                var messageId = _messagesExecutionScope.CreateChild(number);
+                _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
+                _inbox[number] = message;
+            });
 
-                    if (idempotencyKey is not null)
-                    {
-                        var createdAt = _utcNow().Ticks;
-                        _idempotencyKeys[idempotencyKey] = createdAt;
-                        SaveIdempotencyKey(number, idempotencyKey, createdAt);
-                    }
-
-                    var messageId = _messagesExecutionScope.CreateChild(number);
-                    _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
-                    _inbox[number] = message;
-                });
-        }
-        
         TryToDeliver();
 
         if (timeout is not null)
