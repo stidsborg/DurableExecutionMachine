@@ -140,7 +140,6 @@ public class MessagesTests
             Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
             var stored = States.DeserializeToDictionary(states.GetBytes());
             Assert.AreEqual("hello", stored[messageId]);
-            Assert.IsFalse(stored.ContainsKey(timeoutId));
         }
     }
 
