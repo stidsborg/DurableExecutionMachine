@@ -143,4 +143,23 @@ public class MessagesTests
             Assert.IsFalse(stored.ContainsKey(timeoutId));
         }
     }
+
+    [TestMethod]
+    public async Task Subscribe_LeavesNoTimeoutRegistered_WhenMessageIsDeliveredConcurrently()
+    {
+        for (var i = 0; i < 1_000; i++)
+        {
+            var timeoutsManager = new TimeoutsManager();
+            var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+            var messages = new Messages(states, timeoutsManager, Now);
+            messages.Initialize();
+            var messageId = new ExecutionScopeId("0");
+
+            var subscription = Task.Run(() => messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: DateTime.UtcNow.AddHours(1)));
+            _ = Task.Run(() => messages.Deliver("hello", idempotencyKey: null, timeout: null));
+
+            Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.IsNull(timeoutsManager.MinimumTimeout);
+        }
+    }
 }
