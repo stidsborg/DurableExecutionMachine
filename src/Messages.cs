@@ -151,30 +151,29 @@ public class Messages
     {
         Task nextFlush = Task.CompletedTask;
         lock (_lock)
-        {
-            if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
-                return Task.CompletedTask;
-            
             _states.Lock(doWhileLocked: () =>
             {
                 nextFlush = _states.WaitForNextFlush();
-                
+
+                // a duplicate waits for the next flush, as the original delivery might not have been flushed yet
+                if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
+                    return;
+
                 var number = _nextMessageId++;
                 _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
-                
+
                 if (idempotencyKey is not null)
                 {
                     var createdAt = _utcNow().Ticks;
                     _idempotencyKeys[idempotencyKey] = createdAt;
                     SaveIdempotencyKey(number, idempotencyKey, createdAt);
                 }
-                
+
                 var messageId = _messagesExecutionScope.CreateChild(number);
                 _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
                 _inbox[number] = message;
             });
-        }
-        
+
         TryToDeliver();
 
         if (timeout is not null)
