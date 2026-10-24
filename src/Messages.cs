@@ -150,32 +150,38 @@ public class Messages
     private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
     {
         Task nextFlush = Task.CompletedTask;
+        var duplicate = false;
         lock (_lock)
         {
+            // a duplicate waits for the next flush, as the original delivery might not have been flushed yet
             if (idempotencyKey != null && _idempotencyKeys.ContainsKey(idempotencyKey))
-                return Task.CompletedTask;
-            
-            _states.Lock(doWhileLocked: () =>
             {
                 nextFlush = _states.WaitForNextFlush();
-                
-                var number = _nextMessageId++;
-                _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
-                
-                if (idempotencyKey is not null)
+                duplicate = true;
+            }
+            else
+                _states.Lock(doWhileLocked: () =>
                 {
-                    var createdAt = _utcNow().Ticks;
-                    _idempotencyKeys[idempotencyKey] = createdAt;
-                    SaveIdempotencyKey(number, idempotencyKey, createdAt);
-                }
-                
-                var messageId = _messagesExecutionScope.CreateChild(number);
-                _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
-                _inbox[number] = message;
-            });
+                    nextFlush = _states.WaitForNextFlush();
+
+                    var number = _nextMessageId++;
+                    _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
+
+                    if (idempotencyKey is not null)
+                    {
+                        var createdAt = _utcNow().Ticks;
+                        _idempotencyKeys[idempotencyKey] = createdAt;
+                        SaveIdempotencyKey(number, idempotencyKey, createdAt);
+                    }
+
+                    var messageId = _messagesExecutionScope.CreateChild(number);
+                    _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
+                    _inbox[number] = message;
+                });
         }
-        
-        TryToDeliver();
+
+        if (!duplicate)
+            TryToDeliver();
 
         if (timeout is not null)
             _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);

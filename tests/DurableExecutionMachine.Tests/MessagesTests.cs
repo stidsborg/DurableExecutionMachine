@@ -7,7 +7,7 @@ public class MessagesTests
     private static readonly UtcNow Now = () => DateTime.UtcNow;
 
     [TestMethod]
-    public void Deliver_IgnoresDuplicateIdempotencyKey_AfterRestart()
+    public async Task Deliver_IgnoresDuplicateIdempotencyKey_AfterRestart()
     {
         var firstStates = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
         var firstRun = new Messages(firstStates, new TimeoutsManager(), Now);
@@ -19,12 +19,44 @@ public class MessagesTests
         restarted.Initialize();
         var duplicate = restarted.Deliver("hello", idempotencyKey: "key", timeout: null);
 
-        Assert.IsTrue(duplicate.IsCompleted);
         var storedMessages = States
             .DeserializeToDictionary(restartedStates.GetBytes())
             .Keys
             .Count(id => id.Id.StartsWith("-1.0."));
         Assert.AreEqual(1, storedMessages);
+
+        Assert.IsFalse(duplicate.IsCompleted);
+        await restartedStates.Flush();
+        await duplicate;
+    }
+
+    [TestMethod]
+    public async Task Deliver_DuplicateIdempotencyKey_CompletesOnlyAfterNextFlush()
+    {
+        var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+        var original = messages.Deliver("hello", idempotencyKey: "key", timeout: null);
+        var duplicate = messages.Deliver("hello", idempotencyKey: "key", timeout: null);
+
+        Assert.IsFalse(original.IsCompleted);
+        Assert.IsFalse(duplicate.IsCompleted);
+
+        await states.Flush();
+        await original;
+        await duplicate;
+    }
+
+    [TestMethod]
+    public async Task Deliver_DuplicateIdempotencyKey_FlushesWithinTimeout()
+    {
+        var states = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+        _ = messages.Deliver("hello", idempotencyKey: "key", timeout: null);
+        var duplicate = messages.Deliver("hello", idempotencyKey: "key", timeout: TimeSpan.FromMilliseconds(10));
+
+        await duplicate.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [TestMethod]
