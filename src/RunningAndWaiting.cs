@@ -59,20 +59,35 @@ public class RunningAndWaiting
         }
     }
     
+    public async Task StartMessageDelivery()
+    {
+        while (true)
+        {
+            Task shouldSuspend;
+            lock (_lock)
+            {
+                if (_shouldSuspend == null)
+                {
+                    Total++;
+                    return;
+                }
+
+                shouldSuspend = _shouldSuspend.Task;
+            }
+
+            await shouldSuspend;
+        }
+    }
+
+    public void MessageDeliveryCompleted() => SubflowOrMessageDeliveryCompleted();
+
     public void SubflowStarted()
     {
         lock (_lock)
             Total++;
     }
 
-    public void SubflowCompleted()
-    {
-        lock (_lock)
-        {
-            Total--;
-            SignalIfAllSuspended();
-        }
-    }
+    public void SubflowCompleted() => SubflowOrMessageDeliveryCompleted();
 
     public void Suspend()
     {
@@ -114,6 +129,15 @@ public class RunningAndWaiting
             return;
 
         _allSuspended.TrySetResult();
+    }
+
+    private void SubflowOrMessageDeliveryCompleted()
+    {
+        lock (_lock)
+        {
+            Total--;
+            SignalIfAllSuspended();
+        }
     }
 
     private static TaskCompletionSource NewTcs() => new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -127,7 +127,25 @@ public class Messages
         }
     }
 
-    public Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
+    public async Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
+    {
+        // the delivery waits for a sync in progress, so nothing changes in states until the subflows are resumed,
+        // and it counts as running while it writes, so a sync waits for it
+        await _states.RunningAndWaiting.StartMessageDelivery();
+        Task flushed;
+        try
+        {
+            flushed = DeliverNow(message, idempotencyKey, timeout);
+        }
+        finally
+        {
+            _states.RunningAndWaiting.MessageDeliveryCompleted();
+        }
+
+        await flushed;
+    }
+
+    private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
     {
         Task nextSyncTask = Task.CompletedTask;
         lock (_lock)
