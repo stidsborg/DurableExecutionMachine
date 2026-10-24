@@ -11,6 +11,7 @@ public class Messages
     private readonly ExecutionScopeId _rootExecutionScope = new("-1");
     private readonly ExecutionScopeId _messagesExecutionScope;
     private readonly ExecutionScopeId _idempotencyScope;
+    private readonly ExecutionScopeId _nextMessageIdScope;
     
     private readonly Dictionary<string, long> _idempotencyKeys = new();
     private int _nextMessageId;
@@ -22,13 +23,14 @@ public class Messages
         _timeoutsManager = timeoutsManager;
         _utcNow = utcNow;
         
-        var nextMessageId = _states
-            .Deserialize(_rootExecutionScope, out _)
-            as int?;
-        _nextMessageId = nextMessageId ?? 0;
-        
         _messagesExecutionScope = _rootExecutionScope.CreateChild(0);
         _idempotencyScope = _rootExecutionScope.CreateChild(1);
+        _nextMessageIdScope = _rootExecutionScope.CreateChild(2);
+        
+        var nextMessageId = _states
+            .Deserialize(_nextMessageIdScope, out _)
+            as int?;
+        _nextMessageId = nextMessageId ?? 0;
     }
 
     public void Initialize()
@@ -158,7 +160,7 @@ public class Messages
                 nextSyncTask = _states.NextFlush();
                 
                 var number = _nextMessageId++;
-                _states.SetState(_rootExecutionScope, _nextMessageId, typeof(int), removeDescendants: false);
+                _states.SetState(_nextMessageIdScope, _nextMessageId, typeof(int), removeDescendants: false);
                 
                 if (idempotencyKey is not null)
                 {
