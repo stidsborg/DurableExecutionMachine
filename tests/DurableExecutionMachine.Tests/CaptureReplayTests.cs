@@ -1,3 +1,9 @@
+using DurableExecutionMachine.Flows;
+using DurableExecutionMachine.Hosting;
+using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Storage;
+using ExecutionScope = DurableExecutionMachine.Runtime.ExecutionScope;
+
 namespace DurableExecutionMachine.Tests;
 
 [TestClass]

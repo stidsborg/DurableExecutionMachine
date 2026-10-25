@@ -1,3 +1,7 @@
+using DurableExecutionMachine.Hosting;
+using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Storage;
+
 namespace DurableExecutionMachine.Tests;
 
 [TestClass]

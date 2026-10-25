@@ -1,7 +1,11 @@
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
+using DurableExecutionMachine.Flows;
+using DurableExecutionMachine.Hosting;
+using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Utils;
 
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Storage;
 
 public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
 {

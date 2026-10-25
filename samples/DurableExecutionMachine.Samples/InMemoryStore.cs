@@ -1,3 +1,5 @@
+using DurableExecutionMachine.Storage;
+
 namespace DurableExecutionMachine.Samples;
 
 /// <summary>

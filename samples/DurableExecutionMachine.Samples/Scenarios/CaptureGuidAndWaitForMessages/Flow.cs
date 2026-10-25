@@ -1,3 +1,5 @@
+using DurableExecutionMachine.Flows;
+
 namespace DurableExecutionMachine.Samples.Scenarios.CaptureGuidAndWaitForMessages;
 
 /// <summary>

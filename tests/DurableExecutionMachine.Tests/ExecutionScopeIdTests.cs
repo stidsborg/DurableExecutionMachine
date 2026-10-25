@@ -1,3 +1,5 @@
+using DurableExecutionMachine.Runtime;
+
 namespace DurableExecutionMachine.Tests;
 
 [TestClass]

@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Storage;
 
 using System;
 using System.Buffers.Binary;

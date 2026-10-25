@@ -1,4 +1,7 @@
-namespace DurableExecutionMachine;
+using DurableExecutionMachine.Storage;
+using DurableExecutionMachine.Utils;
+
+namespace DurableExecutionMachine.Flows;
 
 public abstract class FatalWorkflowException : Exception
 {

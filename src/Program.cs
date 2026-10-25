@@ -1,3 +1,5 @@
+using DurableExecutionMachine.Hosting;
+
 namespace DurableExecutionMachine;
 
 public static class Program

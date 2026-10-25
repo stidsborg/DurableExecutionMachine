@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Runtime;
 
 public record ExecutionScopeId(string Id)
 {

@@ -1,3 +1,6 @@
+using DurableExecutionMachine.Flows;
+using DurableExecutionMachine.Hosting;
+
 namespace DurableExecutionMachine.Tests;
 
 [TestClass]

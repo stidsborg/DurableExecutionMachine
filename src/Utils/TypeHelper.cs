@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Utils;
 
 using System;
 using System.Collections.Concurrent;

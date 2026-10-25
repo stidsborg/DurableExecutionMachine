@@ -1,3 +1,3 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Flows;
 
 public record Unit;
