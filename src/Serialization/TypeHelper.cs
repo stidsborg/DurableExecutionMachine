@@ -1,8 +1,9 @@
-namespace DurableExecutionMachine.Utils;
+namespace DurableExecutionMachine.Serialization;
 
 using System;
 using System.Collections.Concurrent;
 using System.Text;
+using DurableExecutionMachine.Utils;
 
 // The name a Type is written under in a flow's state, and the Type that name resolves back to,
 // each behind a cache. An instance rather than a static so that the caches belong to the

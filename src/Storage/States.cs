@@ -3,6 +3,7 @@ using System.Text.Json;
 using DurableExecutionMachine.Flows;
 using DurableExecutionMachine.Hosting;
 using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Serialization;
 using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Storage;

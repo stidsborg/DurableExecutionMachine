@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace DurableExecutionMachine.Utils;
+namespace DurableExecutionMachine.Serialization;
 
 public static class TypeHelperExtensions
 {
