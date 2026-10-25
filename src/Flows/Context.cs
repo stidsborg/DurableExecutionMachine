@@ -89,29 +89,21 @@ public class Context
         await _runningAndWaiting.ResumeSubflow();
     }
     
-    public Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
+    public async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
     {
-        var id = Scope.GetNextId();
-        
-        async Task<T> ExecuteWork()
+        _runningAndWaiting.SubflowStarted();
+        try
         {
-            Scope.SetParent(id);
-            _runningAndWaiting.SubflowStarted();
-            await _runningAndWaiting.SuspendIfNeeded();
-            try
+            return await Capture(async () =>
             {
-                var result = await subTask();
-                if (flush)
-                    _states.SetState(id, result!, result!.GetType(), removeDescendants: true);
-                return result;
-            }
-            finally
-            {
-                _runningAndWaiting.SubflowCompleted();
-            }
+                await _runningAndWaiting.SuspendIfNeeded();
+                return await subTask();
+            }, flush);
         }
-        
-        return ExecuteWork();
+        finally
+        {
+            _runningAndWaiting.SubflowCompleted();
+        }
     }
 
     public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null) where TMessage : class
