@@ -1,6 +1,7 @@
 using System.Text.Json;
+using DurableExecutionMachine.Utils;
 
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Storage;
 
 public record StoredException(string ExceptionMessage, string? ExceptionStackTrace, string ExceptionType)
 {

@@ -1,3 +1,3 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Runtime;
 
 public delegate DateTime UtcNow();

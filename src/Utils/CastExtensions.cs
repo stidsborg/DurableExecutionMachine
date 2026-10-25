@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Utils;
 
 internal static class CastExtensions
 {

@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Runtime;
 
 public class RunningAndWaiting
 {

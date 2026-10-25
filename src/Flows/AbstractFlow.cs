@@ -1,4 +1,4 @@
-namespace DurableExecutionMachine;
+namespace DurableExecutionMachine.Flows;
 
 public abstract class AbstractFlow<TParam, TResult>
 {

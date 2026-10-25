@@ -1,4 +1,8 @@
-namespace DurableExecutionMachine;
+using DurableExecutionMachine.Flows;
+using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Storage;
+
+namespace DurableExecutionMachine.Hosting;
 
 public class StateMachineFactory<TFlow, TParam, TResult>(
     Func<TFlow, TParam, Context, Task<TResult>> startFlow,

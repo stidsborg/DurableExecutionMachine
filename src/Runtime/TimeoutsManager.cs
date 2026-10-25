@@ -1,4 +1,6 @@
-namespace DurableExecutionMachine;
+using DurableExecutionMachine.Utils;
+
+namespace DurableExecutionMachine.Runtime;
 
 public class TimeoutsManager : IDisposable
 {
