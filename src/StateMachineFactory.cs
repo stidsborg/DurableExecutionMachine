@@ -11,6 +11,14 @@ public class StateMachineFactory<TFlow, TParam, TResult>(
         return new StateMachine<TFlow, TParam, TResult>(
             startFlow, syncCallback, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow);
     }
+    
+    public StateMachine<TFlow, TParam, TResult> New(Func<TFlow, TParam, Context, Task<TResult>> startFlow, SyncCallback syncCallback)
+    {
+        var runningAndWaiting = new RunningAndWaiting();
+        var timeoutsManager = new TimeoutsManager();
+        return new StateMachine<TFlow, TParam, TResult>(
+            startFlow, syncCallback, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow);
+    }
 
     public StateMachine<TFlow, TParam, TResult> Deserialize(byte[] bytes)
     {

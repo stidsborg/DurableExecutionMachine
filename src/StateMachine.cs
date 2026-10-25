@@ -70,10 +70,8 @@ public class StateMachine<TFlow, TParam, TResult>(
         
     }
     
-    public async Task DeliverMessage()
-    {
-        //can we allow delivery of message while still running?
-    }
+    public Task DeliverMessage(object message, string? idempotencyKey = null, TimeSpan? timeout = null)
+        => Context.Messages.Deliver(message, idempotencyKey, timeout);
     
     public SerializedStateMachine Serialize()
     {

@@ -9,6 +9,7 @@ public class Context
     private readonly UtcNow _utcNow;
     
     internal ExecutionScope Scope { get; }
+    internal Messages Messages => _messages;
     
     public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
