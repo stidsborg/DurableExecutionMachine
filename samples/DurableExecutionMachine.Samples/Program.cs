@@ -6,7 +6,7 @@ public static class Program
 {
     private static readonly Dictionary<string, Func<Task>> Scenarios = new()
     {
-        ["capture-guid-and-wait-for-messages"] = CaptureGuidAndWaitForMessages.Scenario.Run,
+        ["capture-guid-and-wait-for-messages"] = CaptureGuidAndWaitForMessages.Setup.Run,
     };
 
     public static async Task Main(string[] args)
