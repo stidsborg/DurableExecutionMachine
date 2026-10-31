@@ -20,7 +20,7 @@ public class Flow
         var greetings = new List<string>();
         for (var i = 0; i < greetingsToWaitFor; i++)
         {
-            var greeting = await ctx.Message<Greeting>(_ => true);
+            var greeting = await ctx.Message<Greeting>();
             Console.WriteLine($"  [flow] received '{greeting!.Text}'");
             greetings.Add(greeting.Text);
         }
