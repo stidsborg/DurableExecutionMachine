@@ -123,7 +123,7 @@ public class Context
             }
         }, flush);
 
-    public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null) where TMessage : class
+    public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool>? filter = null, TimeSpan? timeout = null) where TMessage : class
     {
         var messageId = Scope.GetNextId();
         var timeoutId = messageId.CreateChild(0);
@@ -133,7 +133,7 @@ public class Context
             return (TMessage?)existingMessage;
 
         return (TMessage?) await _messages.Subscribe(
-            msg => msg is TMessage t && filter(t),
+            msg => msg is TMessage t && (filter == null || filter(t)),
             messageId,
             timeoutId,
             timeout == null ? null : _utcNow().Add(timeout.Value)
