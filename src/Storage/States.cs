@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using DurableExecutionMachine.Flows;
@@ -178,6 +179,13 @@ internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCall
             exists = _states.TryGetValue(id, out bytes);
 
         return exists ? DeserializeState(bytes!.Value) : null;
+    }
+
+    public bool TryGet<T>(ExecutionScopeId id, [MaybeNullWhen(false)] out T value)
+    {
+        var state = Deserialize(id, out var exists);
+        value = exists ? (T)state! : default;
+        return exists;
     }
 
     public static States Deserialize(byte[] bytes, RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)

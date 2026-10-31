@@ -30,10 +30,7 @@ internal class Messages
         _idempotencyScope = _rootExecutionScope.CreateChild(1);
         _nextMessageIdScope = _rootExecutionScope.CreateChild(2);
         
-        var nextMessageId = _states
-            .Deserialize(_nextMessageIdScope, out _)
-            as int?;
-        _nextMessageId = nextMessageId ?? 0;
+        _nextMessageId = _states.TryGet(_nextMessageIdScope, out int nextMessageId) ? nextMessageId : 0;
     }
 
     public void Initialize()
@@ -64,17 +61,16 @@ internal class Messages
         DateTime? timeout,
         CancellationToken cancellationToken = default)
     {
-        var message = _states.Deserialize(messageId, out var messageExists);
-        if (messageExists)
+        if (_states.TryGet(messageId, out object? message))
             return message;
 
         cancellationToken.ThrowIfCancellationRequested();
 
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
    
-        var existingTimeout = (long?) _states.Deserialize(timeoutId, out var timeoutExists);
+        var timeoutExists = _states.TryGet(timeoutId, out long existingTimeout);
         DateTime? timeoutAt = timeoutExists
-            ? new DateTime(existingTimeout!.Value, DateTimeKind.Utc)
+            ? new DateTime(existingTimeout, DateTimeKind.Utc)
             : timeout?.ToUniversalTime();
         if (!timeoutExists && timeoutAt is not null)
             _states.TryAddState(timeoutId, timeoutAt.Value.Ticks, typeof(long), removeDescendants: false);
