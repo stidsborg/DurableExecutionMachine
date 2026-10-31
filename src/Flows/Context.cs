@@ -1,6 +1,5 @@
 using DurableExecutionMachine.Runtime;
 using DurableExecutionMachine.Storage;
-using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Flows;
 
@@ -80,11 +79,7 @@ public class Context
         var cancellationToken = Scope.CancellationToken;
         cancellationToken.ThrowIfCancellationRequested();
 
-        var timeoutAt = _states
-            .Deserialize(timeoutId, out var hasTimeout)
-            .CastTo<DateTime>();
-
-        if (!hasTimeout)
+        if (!_states.TryGet(timeoutId, out DateTime timeoutAt))
         {
             timeoutAt = _utcNow() + delay;
             _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeDescendants: false);           
@@ -155,9 +150,8 @@ public class Context
         return Capture(async () =>
         {
             var winnerIndexId = Scope.GetNextId();
-            var winnerIndexOption = _states.Deserialize(winnerIndexId, out var hasWinner);
-            var winnerIndex = hasWinner ? (int)winnerIndexOption! : -1;
-            
+            var hasWinner = _states.TryGet(winnerIndexId, out int winnerIndex);
+
             // linked, so cancelling an outer WhenAny reaches this one's children, but not the other way round
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Scope.CancellationToken);
             Scope.CancellationToken = cancellation.Token;
@@ -226,9 +220,8 @@ public class Context
         var messageId = Scope.GetNextId();
         var timeoutId = messageId.CreateChild(0);
         
-        var existingMessage = _states.Deserialize(messageId, out var hasMessage);
-        if (hasMessage)
-            return (TMessage?)existingMessage;
+        if (_states.TryGet(messageId, out TMessage? existingMessage))
+            return existingMessage;
 
         return (TMessage?) await _messages.Subscribe(
             msg => msg is TMessage t && (filter == null || filter(t)),
