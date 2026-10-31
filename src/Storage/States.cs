@@ -8,7 +8,7 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Storage;
 
-public class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
+internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
 {
     private readonly Dictionary<ExecutionScopeId, Lazy<byte[]>> _states = new();
     private static readonly Lazy<byte[]> Null = new(Array.Empty<byte>());

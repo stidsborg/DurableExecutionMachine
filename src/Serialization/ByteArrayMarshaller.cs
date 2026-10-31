@@ -8,7 +8,7 @@ using System.Collections.Generic;
 // bytes, with -1 marking a null. Because the length is read from a known offset the payload is
 // never scanned, so arbitrary binary content - including bytes that look like a length prefix -
 // round-trips untouched, and a marshalled buffer can itself be marshalled again.
-public static class ByteArrayMarshaller
+internal static class ByteArrayMarshaller
 {
     public static byte[] Serialize(params byte[]?[] arrays)
     {

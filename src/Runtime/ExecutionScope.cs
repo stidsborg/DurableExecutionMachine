@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Runtime;
 
-public class ExecutionScope
+internal class ExecutionScope
 {
     // shared by reference so ids handed out inside a nested async method are visible to its caller,
     // which a plain AsyncLocal<ExecutionScopeId> would lose when the nested method returns

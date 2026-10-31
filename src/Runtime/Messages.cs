@@ -3,7 +3,7 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Runtime;
 
-public class Messages
+internal class Messages
 {
     private readonly States _states;
     private readonly TimeoutsManager _timeoutsManager;

@@ -4,7 +4,7 @@ namespace DurableExecutionMachine.Serialization;
 
 // The name a Type is written under in a flow's state: its assembly-qualified name without the
 // Version/Culture/PublicKeyToken segments, so that it still resolves after the assembly's version changes.
-public static class TypeExtensions
+internal static class TypeExtensions
 {
     public static string SimpleQualifiedName(this Type type)
     {
