@@ -32,6 +32,27 @@ public class CaptureReplayTests
         Assert.AreEqual("boom", exception.FlowErrorMessage);
     }
 
+    [TestMethod]
+    public async Task Capture_StoresOperationCanceledException_WhenScopeIsNotCancelled()
+    {
+        var firstStates = new States(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+        var firstRun = CreateContext(firstStates);
+        int TimedOut() => throw new OperationCanceledException("timed out");
+        await Assert.ThrowsExactlyAsync<FatalWorkflowException<OperationCanceledException>>(
+            () => firstRun.Capture(TimedOut)
+        );
+
+        var replayStates = States.Deserialize(firstStates.GetBytes(), new RunningAndWaiting(), NoSync, new TimeoutsManager());
+        var replay = CreateContext(replayStates);
+        var workRan = false;
+        var exception = await Assert.ThrowsExactlyAsync<FatalWorkflowException<OperationCanceledException>>(
+            () => replay.Capture(() => { workRan = true; return 42; })
+        );
+
+        Assert.IsFalse(workRan);
+        Assert.AreEqual("timed out", exception.FlowErrorMessage);
+    }
+
     private static Context CreateContext(States states)
     {
         var timeoutsManager = new TimeoutsManager();

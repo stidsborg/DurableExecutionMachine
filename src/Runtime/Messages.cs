@@ -61,12 +61,15 @@ internal class Messages
         Func<object, bool> filter, 
         ExecutionScopeId messageId, 
         ExecutionScopeId timeoutId, 
-        DateTime? timeout)
+        DateTime? timeout,
+        CancellationToken cancellationToken = default)
     {
         var message = _states.Deserialize(messageId, out var messageExists);
         if (messageExists)
             return message;
-        
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
    
         var existingTimeout = (long?) _states.Deserialize(timeoutId, out var timeoutExists);
@@ -98,10 +101,28 @@ internal class Messages
                         }
                     });
         
+        await using var cancellation = cancellationToken.Register(() =>
+        {
+            lock (_lock)
+            {
+                // the subscription is removed when a message is delivered to it or its timeout fires
+                if (!_subscriptions.Remove(messageId))
+                    return;
+
+                _timeoutsManager.CancelTimeout(timeoutId);
+                tcs.SetCanceled(cancellationToken);
+            }
+        });
+
         _states.RunningAndWaiting.SubflowSuspended();
-        var result = await tcs.Task;
-        await _states.RunningAndWaiting.ResumeSubflow();
-        return result;
+        try
+        {
+            return await tcs.Task;
+        }
+        finally
+        {
+            await _states.RunningAndWaiting.ResumeSubflow();
+        }
     }
 
     private void TryToDeliver()

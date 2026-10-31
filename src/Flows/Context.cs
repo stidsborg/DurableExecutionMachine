@@ -55,6 +55,11 @@ public class Context
                 _states.SetException(id, e, removeDescendants: true);
                 throw;
             }
+            catch (OperationCanceledException) when (Scope.CancellationToken.IsCancellationRequested)
+            {
+                // cancelled by a WhenAny, so not stored: on replay the branch starts cancelled and throws again at its next wait
+                throw;
+            }
             catch (Exception e)
             {
                 var workflowException = FatalWorkflowException.CreateNonGeneric(e);
@@ -72,6 +77,9 @@ public class Context
     public async Task Delay(TimeSpan delay)
     {
         var timeoutId = Scope.GetNextId();
+        var cancellationToken = Scope.CancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
+
         var timeoutAt = _states
             .Deserialize(timeoutId, out var hasTimeout)
             .CastTo<DateTime>();
@@ -84,9 +92,21 @@ public class Context
 
         var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt, () => expired.TrySetResult());
+        await using var cancellation = cancellationToken.Register(() =>
+        {
+            _timeoutsManager.CancelTimeout(timeoutId);
+            expired.TrySetCanceled(cancellationToken);
+        });
+
         _runningAndWaiting.SubflowSuspended();
-        await expired.Task;
-        await _runningAndWaiting.ResumeSubflow();
+        try
+        {
+            await expired.Task;
+        }
+        finally
+        {
+            await _runningAndWaiting.ResumeSubflow();
+        }
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
@@ -123,6 +143,70 @@ public class Context
             }
         }, flush);
 
+    // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined
+    public Task<T> WhenAny<T>(IEnumerable<Func<CancellationToken, Task<T>>> children, bool flush = true)
+    {
+        var childArray = children.ToArray();
+
+        // checked before the capture, so the mistake is thrown on every run instead of being stored as the flow's failure
+        if (childArray.Length == 0)
+            throw new ArgumentException("WhenAny needs at least one child", nameof(children));
+
+        return Capture(async () =>
+        {
+            var winnerIndexId = Scope.GetNextId();
+            var winnerIndexOption = _states.Deserialize(winnerIndexId, out var hasWinner);
+            var winnerIndex = hasWinner ? (int)winnerIndexOption! : -1;
+            
+            // linked, so cancelling an outer WhenAny reaches this one's children, but not the other way round
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Scope.CancellationToken);
+            Scope.CancellationToken = cancellation.Token;
+
+            // on replay the winner is already known, so the losers start cancelled and stop at their next wait
+            if (hasWinner)
+                await cancellation.CancelAsync();
+
+            var tasks = childArray
+                .Select(child => Parallel(() => child(cancellation.Token), flush))
+                .ToArray();
+            
+            if (!hasWinner)
+            {
+                var first = await WaitAsSuspended(Task.WhenAny(tasks));
+                winnerIndex = Array.IndexOf(tasks, first);
+
+                // stored before the losers are cancelled, so a restart during the join cancels them again
+                _states.SetState(winnerIndexId, winnerIndex, typeof(int), removeDescendants: false);
+            }
+
+            await cancellation.CancelAsync();
+            try
+            {
+                await WaitAsSuspended(Task.WhenAll(tasks));
+            }
+            catch
+            {
+                // the losers' results and exceptions are thrown away
+            }
+
+            return await tasks[winnerIndex];
+        }, flush);
+    }
+
+    // the parent counts as suspended while it waits, so a sync can complete while the children are parked
+    private async Task<TResult> WaitAsSuspended<TResult>(Task<TResult> task)
+    {
+        _runningAndWaiting.SubflowSuspended();
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            await _runningAndWaiting.ResumeSubflow();
+        }
+    }
+
     // without a timeout the flow waits until a matching message arrives, so the result is never null
     public async Task<TMessage> Message<TMessage>() where TMessage : class
         => (await WaitForMessage<TMessage>(filter: null, timeout: null))!;
@@ -150,7 +234,8 @@ public class Context
             msg => msg is TMessage t && (filter == null || filter(t)),
             messageId,
             timeoutId,
-            timeout == null ? null : _utcNow().Add(timeout.Value)
+            timeout == null ? null : _utcNow().Add(timeout.Value),
+            Scope.CancellationToken
         );
     }
 }
