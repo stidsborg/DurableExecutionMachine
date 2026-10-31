@@ -55,6 +55,11 @@ public class Context
                 _states.SetException(id, e, removeDescendants: true);
                 throw;
             }
+            catch (OperationCanceledException) when (Scope.CancellationToken.IsCancellationRequested)
+            {
+                // cancelled by a WhenAny, so not stored: on replay the branch starts cancelled and throws again at its next wait
+                throw;
+            }
             catch (Exception e)
             {
                 var workflowException = FatalWorkflowException.CreateNonGeneric(e);

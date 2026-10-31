@@ -242,6 +242,52 @@ public class WhenAnyTests
     }
 
     [TestMethod]
+    public async Task WhenAny_CancelledCaptureInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
+    {
+        var states = NewStates();
+        var ctx = CreateContext(states, new RunningAndWaiting());
+        Exception? caught = null;
+        var storedFailures = -1;
+
+        var winner = await ctx.WhenAny([
+            async _ =>
+            {
+                try { await ctx.Capture(async () => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; }); }
+                catch (Exception e) { caught = e; storedFailures = StoredFailures(states); }
+                return 1;
+            },
+            async _ => { await Task.Yield(); return 2; }
+        ]).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(2, winner);
+        Assert.IsInstanceOfType<OperationCanceledException>(caught);
+        Assert.AreEqual(0, storedFailures);
+    }
+
+    [TestMethod]
+    public async Task WhenAny_NestedWhenAnyInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
+    {
+        var states = NewStates();
+        var ctx = CreateContext(states, new RunningAndWaiting());
+        Exception? caught = null;
+        var storedFailures = -1;
+
+        var winner = await ctx.WhenAny([
+            async _ =>
+            {
+                try { await ctx.WhenAny([async _ => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; }]); }
+                catch (Exception e) { caught = e; storedFailures = StoredFailures(states); }
+                return 1;
+            },
+            async _ => { await Task.Yield(); return 2; }
+        ]).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(2, winner);
+        Assert.IsInstanceOfType<OperationCanceledException>(caught);
+        Assert.AreEqual(0, storedFailures);
+    }
+
+    [TestMethod]
     public async Task Sync_Completes_WhileWhenAnyChildrenAreParkedInDelay()
     {
         var factory = new StateMachineFactory<object, int, int>(
@@ -260,6 +306,10 @@ public class WhenAnyTests
     }
 
     private static States NewStates() => new(new RunningAndWaiting(), NoSync, new TimeoutsManager());
+
+    private static int StoredFailures(States states)
+        => States.DeserializeToDictionary(states.GetBytes()).Values.OfType<FatalWorkflowException>().Count();
+
     private static States Restart(States states)
         => States.Deserialize(states.GetBytes(), new RunningAndWaiting(), NoSync, new TimeoutsManager());
 

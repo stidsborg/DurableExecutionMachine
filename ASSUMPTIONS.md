@@ -59,6 +59,10 @@ When `Context.WhenAny` cancels a child, every `Context.Message` and `Context.Del
 and the join waits for it. The token passed to a child is the same one, for work of the flow's own that should stop
 early.
 
+The `OperationCanceledException` passes through every `Context.Capture` it leaves as it is, so the flow can catch it
+as usual, and it is not stored: on replay the child starts cancelled and throws again at its next wait. An
+`OperationCanceledException` thrown in a child that has not been cancelled is stored like any other exception.
+
 ## Choices that depend on timing must be captured
 
 When several tasks have already completed, `Task.WhenAny` returns the first of them in argument order. On replay,
