@@ -140,34 +140,41 @@ public class Context
 
     // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined
     public Task<T> WhenAny<T>(IEnumerable<Func<CancellationToken, Task<T>>> children, bool flush = true)
-        => Capture(async () =>
-        {
-            var winnerId = Scope.GetNextId();
-            var storedWinner = _states.Deserialize(winnerId, out var hasWinner);
+    {
+        var childArray = children.ToArray();
 
+        // checked before the capture, so the mistake is thrown on every run instead of being stored as the flow's failure
+        if (childArray.Length == 0)
+            throw new ArgumentException("WhenAny needs at least one child", nameof(children));
+
+        return Capture(async () =>
+        {
+            var winnerIndexId = Scope.GetNextId();
+            var winnerIndexOption = _states.Deserialize(winnerIndexId, out var hasWinner);
+            var winnerIndex = hasWinner ? (int)winnerIndexOption! : -1;
+            
             // linked, so cancelling an outer WhenAny reaches this one's children, but not the other way round
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Scope.CancellationToken);
             Scope.CancellationToken = cancellation.Token;
 
-            // on replay the winner is already known, so the losers start cancelled
+            // on replay the winner is already known, so the losers start cancelled and stop at their next wait
             if (hasWinner)
                 await cancellation.CancelAsync();
 
-            var tasks = children
+            var tasks = childArray
                 .Select(child => Parallel(() => child(cancellation.Token), flush))
                 .ToArray();
-
-            var winner = hasWinner ? (int) storedWinner! : -1;
+            
             if (!hasWinner)
             {
                 var first = await WaitAsSuspended(Task.WhenAny(tasks));
-                winner = Array.IndexOf(tasks, first);
+                winnerIndex = Array.IndexOf(tasks, first);
 
                 // stored before the losers are cancelled, so a restart during the join cancels them again
-                _states.SetState(winnerId, winner, typeof(int), removeDescendants: false);
-                await cancellation.CancelAsync();
+                _states.SetState(winnerIndexId, winnerIndex, typeof(int), removeDescendants: false);
             }
 
+            await cancellation.CancelAsync();
             try
             {
                 await WaitAsSuspended(Task.WhenAll(tasks));
@@ -177,8 +184,9 @@ public class Context
                 // the losers' results and exceptions are thrown away
             }
 
-            return await tasks[winner];
+            return await tasks[winnerIndex];
         }, flush);
+    }
 
     // the parent counts as suspended while it waits, so a sync can complete while the children are parked
     private async Task<TResult> WaitAsSuspended<TResult>(Task<TResult> task)

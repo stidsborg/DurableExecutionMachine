@@ -155,7 +155,7 @@ public class WhenAnyTests
     }
 
     [TestMethod]
-    public async Task WhenAny_StartsLosersCancelled_OnReplay_WhenRestartedDuringJoin()
+    public async Task WhenAny_ReturnsStoredWinner_AndStartsLosersCancelled_OnReplay_WhenRestartedDuringJoin()
     {
         var firstStates = NewStates();
         var firstRun = CreateContext(firstStates, new RunningAndWaiting());
@@ -180,6 +180,68 @@ public class WhenAnyTests
     }
 
     [TestMethod]
+    public async Task WhenAny_ThrowsStoredWinnersException_AndStartsLosersCancelled_OnReplay_WhenRestartedDuringJoin()
+    {
+        var firstStates = NewStates();
+        var firstRun = CreateContext(firstStates, new RunningAndWaiting());
+        var loserIgnoresCancellation = new TaskCompletionSource<int>();
+        _ = firstRun.WhenAny<int>([
+            _ => loserIgnoresCancellation.Task,
+            async _ => { await Task.Yield(); throw new InvalidOperationException("boom"); }
+        ]);
+        await Task.Delay(50);
+
+        var replay = CreateContext(Restart(firstStates), new RunningAndWaiting());
+        var loserStartedCancelled = false;
+        var winnerRan = false;
+        var exception = await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(
+            () => replay.WhenAny([
+                ct => { loserStartedCancelled = ct.IsCancellationRequested; return Task.FromResult(1); },
+                _ => { winnerRan = true; return Task.FromResult(2); }
+            ])
+        );
+
+        Assert.AreEqual("boom", exception.FlowErrorMessage);
+        Assert.IsTrue(loserStartedCancelled);
+        Assert.IsFalse(winnerRan);
+    }
+
+    [TestMethod]
+    public async Task WhenAny_RunsLosersUnfinishedCaptureAgain_OnReplay_WhenRestartedDuringJoin()
+    {
+        var firstStates = NewStates();
+        var firstRun = CreateContext(firstStates, new RunningAndWaiting());
+        var captureRuns = 0;
+        var captureNeverFinishes = new TaskCompletionSource<int>();
+        _ = firstRun.WhenAny([
+            _ => firstRun.Capture(() => { captureRuns++; return captureNeverFinishes.Task; }),
+            async _ => { await Task.Yield(); return 2; }
+        ]);
+        await Task.Delay(50);
+        Assert.AreEqual(1, captureRuns);
+
+        var replay = CreateContext(Restart(firstStates), new RunningAndWaiting());
+        var replayResult = await replay.WhenAny([
+            _ => replay.Capture(() => { captureRuns++; return 1; }),
+            _ => Task.FromResult(-1)
+        ]);
+
+        Assert.AreEqual(2, replayResult);
+        Assert.AreEqual(2, captureRuns);
+    }
+
+    [TestMethod]
+    public async Task WhenAny_ThrowsArgumentException_WithoutStoringIt_WhenGivenNoChildren()
+    {
+        var states = NewStates();
+        var ctx = CreateContext(states, new RunningAndWaiting());
+
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() => ctx.WhenAny<int>([]));
+
+        Assert.AreEqual(0, States.DeserializeToDictionary(states.GetBytes()).Count);
+    }
+
+    [TestMethod]
     public async Task Sync_Completes_WhileWhenAnyChildrenAreParkedInDelay()
     {
         var factory = new StateMachineFactory<object, int, int>(
@@ -198,7 +260,6 @@ public class WhenAnyTests
     }
 
     private static States NewStates() => new(new RunningAndWaiting(), NoSync, new TimeoutsManager());
-
     private static States Restart(States states)
         => States.Deserialize(states.GetBytes(), new RunningAndWaiting(), NoSync, new TimeoutsManager());
 
