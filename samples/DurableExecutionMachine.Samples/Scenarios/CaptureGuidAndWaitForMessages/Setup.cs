@@ -31,7 +31,7 @@ public static class Setup
             stm.Start(new Flow(), param: 3);
 
             Console.WriteLine("Delivering 'hello'");
-            await stm.DeliverMessage(new Greeting("hello"), timeout: FlushWithin);
+            await stm.DeliverMessage("hello", timeout: FlushWithin);
 
             Console.WriteLine("Syncing");
             await stm.Sync();
@@ -47,9 +47,9 @@ public static class Setup
             Console.ReadLine();
             
             Console.WriteLine("Delivering 'hi'");
-            await stm.DeliverMessage(new Greeting("hi"), timeout: FlushWithin);
+            await stm.DeliverMessage("hi", timeout: FlushWithin);
             Console.WriteLine("Delivering 'hey'");
-            await stm.DeliverMessage(new Greeting("hey"), timeout: FlushWithin);
+            await stm.DeliverMessage("hey", timeout: FlushWithin);
 
             Console.WriteLine($"Result: {stm.GetResult()}");
 

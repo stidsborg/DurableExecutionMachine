@@ -123,7 +123,21 @@ public class Context
             }
         }, flush);
 
-    public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool>? filter = null, TimeSpan? timeout = null) where TMessage : class
+    // without a timeout the flow waits until a matching message arrives, so the result is never null
+    public async Task<TMessage> Message<TMessage>() where TMessage : class
+        => (await WaitForMessage<TMessage>(filter: null, timeout: null))!;
+
+    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter) where TMessage : class
+        => (await WaitForMessage(filter, timeout: null))!;
+
+    // with a timeout the result is null when no matching message arrives in time
+    public Task<TMessage?> Message<TMessage>(TimeSpan timeout) where TMessage : class
+        => WaitForMessage<TMessage>(filter: null, timeout);
+
+    public Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan timeout) where TMessage : class
+        => WaitForMessage(filter, timeout);
+
+    private async Task<TMessage?> WaitForMessage<TMessage>(Func<TMessage, bool>? filter, TimeSpan? timeout) where TMessage : class
     {
         var messageId = Scope.GetNextId();
         var timeoutId = messageId.CreateChild(0);
