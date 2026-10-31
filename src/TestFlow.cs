@@ -2,7 +2,7 @@ using DurableExecutionMachine.Flows;
 
 namespace DurableExecutionMachine;
 
-public class TestFlow
+internal class TestFlow
 {
     public async Task<string> Run(int input, Context ctx)
     {

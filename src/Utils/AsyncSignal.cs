@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Utils;
 
-public sealed class AsyncSignal
+internal sealed class AsyncSignal
 {
     private TaskCompletionSource _waitingTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _lock = new();

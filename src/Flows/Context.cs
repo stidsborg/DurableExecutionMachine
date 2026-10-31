@@ -15,7 +15,7 @@ public class Context
     internal ExecutionScope Scope { get; }
     internal Messages Messages => _messages;
     
-    public Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
+    internal Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
         _states = states;
         Scope = scope;

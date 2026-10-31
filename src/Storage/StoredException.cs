@@ -3,7 +3,7 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Storage;
 
-public record StoredException(string ExceptionMessage, string? ExceptionStackTrace, string ExceptionType)
+internal record StoredException(string ExceptionMessage, string? ExceptionStackTrace, string ExceptionType)
 {
     public byte[] Serialize() => JsonSerializer.Serialize(this).ToUtf8Bytes();
     public static StoredException Deserialize(byte[] bytes) => Deserialize(bytes.ToStringFromUtf8Bytes());

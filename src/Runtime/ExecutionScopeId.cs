@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Runtime;
 
-public record ExecutionScopeId(string Id)
+internal record ExecutionScopeId(string Id)
 {
     public static ExecutionScopeId Root { get; } = new(string.Empty);
     public bool IsRoot => Id == string.Empty;

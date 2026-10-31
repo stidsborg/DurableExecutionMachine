@@ -2,7 +2,7 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Runtime;
 
-public class TimeoutsManager : IDisposable
+internal class TimeoutsManager : IDisposable
 {
     private readonly Lock _lock = new();
     private readonly Dictionary<ExecutionScopeId, RegisteredTimeout> _timeouts = new();

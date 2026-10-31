@@ -4,20 +4,33 @@ using DurableExecutionMachine.Storage;
 
 namespace DurableExecutionMachine.Hosting;
 
-public class StateMachine<TFlow, TParam, TResult>(
-    Func<TFlow, TParam, Context, Task<TResult>> startFlow,
-    SyncCallback syncCallback,
-    States states,
-    RunningAndWaiting runningAndWaiting,
-    TimeoutsManager timeoutsManager,
-    UtcNow utcNow
-)
+public class StateMachine<TFlow, TParam, TResult>
 {
+    private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
+    private readonly SyncCallback _syncCallback;
+    private readonly States _states;
+    private readonly RunningAndWaiting _runningAndWaiting;
+
     private Dictionary<int, byte[]> _state;
     private TFlow _flow;
     private Task<TResult> _flowTask;
 
-    internal Context Context { get; } = CreateContext(states, runningAndWaiting, timeoutsManager, utcNow);
+    internal Context Context { get; }
+
+    internal StateMachine(
+        Func<TFlow, TParam, Context, Task<TResult>> startFlow,
+        SyncCallback syncCallback,
+        States states,
+        RunningAndWaiting runningAndWaiting,
+        TimeoutsManager timeoutsManager,
+        UtcNow utcNow)
+    {
+        _startFlow = startFlow;
+        _syncCallback = syncCallback;
+        _states = states;
+        _runningAndWaiting = runningAndWaiting;
+        Context = CreateContext(states, runningAndWaiting, timeoutsManager, utcNow);
+    }
 
     private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
@@ -32,7 +45,7 @@ public class StateMachine<TFlow, TParam, TResult>(
     
     public void Start(TFlow flow, TParam param)
     {
-        runningAndWaiting.SubflowStarted();
+        _runningAndWaiting.SubflowStarted();
         _flowTask = RunFlow();
 
         async Task<TResult> RunFlow()
@@ -40,27 +53,27 @@ public class StateMachine<TFlow, TParam, TResult>(
             Context.Scope.SetRoot();
             try
             {
-                return await startFlow(flow, param, Context);
+                return await _startFlow(flow, param, Context);
             }
             finally
             {
-                runningAndWaiting.SubflowCompleted();
+                _runningAndWaiting.SubflowCompleted();
             }
         }
     }
 
     public async Task Sync()
     {
-        runningAndWaiting.Suspend();
+        _runningAndWaiting.Suspend();
         try
         {
-            await runningAndWaiting.WaitForAllSuspended();
-            var (bytes, minimumTimeout) = states.Serialize();
-            await syncCallback(bytes, minimumTimeout);
+            await _runningAndWaiting.WaitForAllSuspended();
+            var (bytes, minimumTimeout) = _states.Serialize();
+            await _syncCallback(bytes, minimumTimeout);
         }
         finally
         {
-            runningAndWaiting.Resume();
+            _runningAndWaiting.Resume();
         }
     }
 

@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Runtime;
 
-public class RunningAndWaiting
+internal class RunningAndWaiting
 {
     private readonly Lock _lock = new();
     

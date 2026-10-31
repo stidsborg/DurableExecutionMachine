@@ -9,14 +9,14 @@ public abstract class FatalWorkflowException : Exception
     public string? FlowStackTrace { get; }
     public Type ErrorType { get; }
 
-    public FatalWorkflowException(string errorMessage, string? stackTrace, Type errorType) : base(errorMessage)
+    internal FatalWorkflowException(string errorMessage, string? stackTrace, Type errorType) : base(errorMessage)
     {
         FlowErrorMessage = errorMessage;
         FlowStackTrace = stackTrace;
         ErrorType = errorType;
     }
 
-    public static FatalWorkflowException Create(StoredException storedException)
+    internal static FatalWorkflowException Create(StoredException storedException)
     {
         var (message, stackTrace, exceptionTypeString) = storedException;
         var exceptionType = Type.GetType(exceptionTypeString, throwOnError: true);
@@ -32,7 +32,7 @@ public abstract class FatalWorkflowException : Exception
             typeof(TException)
         );
 
-    public static FatalWorkflowException CreateNonGeneric(Exception exception)
+    internal static FatalWorkflowException CreateNonGeneric(Exception exception)
     {
         var genericFatalExceptionType = typeof(FatalWorkflowException<>).MakeGenericType(exception.GetType());
         var message = exception.Message;
@@ -43,7 +43,7 @@ public abstract class FatalWorkflowException : Exception
                ?? throw new InvalidOperationException("Unable to create FatalWorkflowException from Exception: " + exception);
     }
 
-    public StoredException ToStoredException()
+    internal StoredException ToStoredException()
         => new(FlowErrorMessage, FlowStackTrace, ErrorType.SimpleQualifiedName());
 }
 
