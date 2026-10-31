@@ -20,9 +20,9 @@ public class Flow
         var greetings = new List<string>();
         for (var i = 0; i < greetingsToWaitFor; i++)
         {
-            var greeting = await ctx.Message<Greeting>();
-            Console.WriteLine($"  [flow] received '{greeting!.Text}'");
-            greetings.Add(greeting.Text);
+            var greeting = await ctx.Message<string>();
+            Console.WriteLine($"  [flow] received '{greeting}'");
+            greetings.Add(greeting);
         }
 
         return $"{id}: {string.Join(", ", greetings)}";
