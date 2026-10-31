@@ -89,7 +89,7 @@ public class Context
         await _runningAndWaiting.ResumeSubflow();
     }
     
-    public async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
+    private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
     {
         _runningAndWaiting.SubflowStarted();
         try
