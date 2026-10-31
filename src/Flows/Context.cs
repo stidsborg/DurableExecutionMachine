@@ -106,6 +106,23 @@ public class Context
         }
     }
 
+    public Task<T[]> WhenAll<T>(IEnumerable<Func<Task<T>>> children, bool flush = true)
+        => Capture(async () =>
+        {
+            var tasks = children.Select(child => Parallel(child, flush)).ToArray();
+
+            // the parent counts as suspended while it waits, so a sync can complete while the children are parked
+            _runningAndWaiting.SubflowSuspended();
+            try
+            {
+                return await Task.WhenAll(tasks);
+            }
+            finally
+            {
+                await _runningAndWaiting.ResumeSubflow();
+            }
+        }, flush);
+
     public async Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan? timeout = null) where TMessage : class
     {
         var messageId = Scope.GetNextId();
