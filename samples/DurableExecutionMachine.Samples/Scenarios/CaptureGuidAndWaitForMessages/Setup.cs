@@ -13,7 +13,7 @@ public static class Setup
     // a delivery completes once it has been flushed, so flush it if nothing else does within this time
     private static readonly TimeSpan FlushWithin = TimeSpan.FromMilliseconds(100);
 
-    // Path.GetTempPath() is $TMPDIR on macOS, e.g. /var/folders/xx/.../T/
+    // relative to the current working directory
     private static readonly string FilePath = "./capture-guid-and-wait-for-messages.state";
 
     public static async Task Run()
@@ -24,7 +24,23 @@ public static class Setup
             syncCallback: store.Save
         );
 
-        if (store.Bytes is not { } bytes)
+        if (store.Bytes is { } bytes)
+        {
+            Console.WriteLine($"Restoring the execution from {FilePath}");
+            var stm = factory.Deserialize(bytes);
+            stm.Resume(new Flow());
+
+            Console.WriteLine("Delivering 'hi'");
+            await stm.DeliverMessage("hi", timeout: FlushWithin);
+            Console.WriteLine("Delivering 'hey'");
+            await stm.DeliverMessage("hey", timeout: FlushWithin);
+
+            Console.WriteLine($"Result: {stm.GetResult()}");
+
+            File.Delete(FilePath);
+            Console.WriteLine("Deleted the stored state - the next run starts a new execution");
+        }
+        else
         {
             Console.WriteLine("Starting a new execution");
             var stm = factory.New();
@@ -40,24 +56,6 @@ public static class Setup
             stm.ResumeAfterSuspend();
 
             Console.WriteLine($"Stored state in {FilePath} - run the scenario again to resume the execution");
-        }
-        else
-        {
-            Console.WriteLine($"Restoring the execution from {FilePath}");
-            var stm = factory.Deserialize(bytes);
-            stm.Resume(new Flow());
-
-            Console.ReadLine();
-            
-            Console.WriteLine("Delivering 'hi'");
-            await stm.DeliverMessage("hi", timeout: FlushWithin);
-            Console.WriteLine("Delivering 'hey'");
-            await stm.DeliverMessage("hey", timeout: FlushWithin);
-
-            Console.WriteLine($"Result: {stm.GetResult()}");
-
-            File.Delete(FilePath);
-            Console.WriteLine("Deleted the stored state - the next run starts a new execution");
         }
     }
 }
