@@ -110,15 +110,7 @@ internal class Messages
             }
         });
 
-        _states.SuspensionBarrier.SubflowSuspended();
-        try
-        {
-            return await tcs.Task;
-        }
-        finally
-        {
-            await _states.SuspensionBarrier.ResumeSubflow();
-        }
+        return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
     }
 
     private void TryToDeliver()
@@ -153,7 +145,7 @@ internal class Messages
     {
         // the delivery waits for a sync in progress, so nothing changes in states until the subflows are resumed,
         // and it counts as running while it writes, so a sync waits for it
-        await _states.SuspensionBarrier.StartMessageDelivery();
+        await _states.SuspensionBarrier.EnterWhenReleased();
         Task flushed;
         try
         {
@@ -161,7 +153,7 @@ internal class Messages
         }
         finally
         {
-            _states.SuspensionBarrier.MessageDeliveryCompleted();
+            _states.SuspensionBarrier.Leave();
         }
 
         await flushed;

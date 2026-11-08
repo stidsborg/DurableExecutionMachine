@@ -1,142 +1,120 @@
 namespace DurableExecutionMachine.Runtime;
 
+// counts the subflows and message deliveries that are running. a suspension is complete when none are running
 internal class SuspensionBarrier
 {
     private readonly Lock _lock = new();
-    
-    private TaskCompletionSource? _shouldSuspend;
+
+    // non-null while a suspension is requested, and completed when it is released
+    private TaskCompletionSource? _released;
     private TaskCompletionSource? _allSuspended;
 
-    public int Total { get; private set; }
-    public int Suspended { get; private set; }
+    public int Running { get; private set; }
 
-    public bool IsAllSuspended()
+    // the caller is already running, so a suspension cannot complete before the new subflow is counted
+    public void Enter()
     {
         lock (_lock)
-            return Suspended == Total;
+            Running++;
+    }
+
+    public async Task EnterWhenReleased()
+    {
+        while (true)
+        {
+            Task released;
+            lock (_lock)
+            {
+                if (_released == null)
+                {
+                    Running++;
+                    return;
+                }
+
+                released = _released.Task;
+            }
+
+            await released;
+        }
+    }
+
+    public void Leave()
+    {
+        lock (_lock)
+        {
+            Running--;
+            if (Running == 0)
+                _allSuspended?.TrySetResult();
+        }
     }
 
     public async Task SuspendIfNeeded()
     {
         lock (_lock)
-        {
-            if (_shouldSuspend == null)
+            if (_released == null)
                 return;
 
-            Suspended++;
-            SignalIfAllSuspended();
-        }
-
-        await ResumeSubflow();
+        await SuspendedWhile(Task.CompletedTask);
     }
-    
-    public async Task ResumeSubflow()
+
+    // the caller counts as suspended while it waits, so a suspension can complete in the meantime
+    public async Task SuspendedWhile(Task task)
     {
-        while (true)
+        Leave();
+        try
         {
-            TaskCompletionSource shouldSuspend;
-            lock (_lock)
-            {
-                if (_shouldSuspend == null)
-                {
-                    Suspended--;
-                    return;
-                }
-                
-                shouldSuspend = _shouldSuspend;         
-            }
-            
-            await shouldSuspend.Task;
+            await task;
         }
-    }
-    
-    public void SubflowSuspended()
-    {
-        lock (_lock)
+        finally
         {
-            Suspended++;
-            SignalIfAllSuspended();
+            await EnterWhenReleased();
         }
     }
-    
-    public async Task StartMessageDelivery()
+
+    public async Task<T> SuspendedWhile<T>(Task<T> task)
     {
-        while (true)
+        Leave();
+        try
         {
-            Task shouldSuspend;
-            lock (_lock)
-            {
-                if (_shouldSuspend == null)
-                {
-                    Total++;
-                    return;
-                }
-
-                shouldSuspend = _shouldSuspend.Task;
-            }
-
-            await shouldSuspend;
+            return await task;
+        }
+        finally
+        {
+            await EnterWhenReleased();
         }
     }
-
-    public void MessageDeliveryCompleted() => SubflowOrMessageDeliveryCompleted();
-
-    public void SubflowStarted()
-    {
-        lock (_lock)
-            Total++;
-    }
-
-    public void SubflowCompleted() => SubflowOrMessageDeliveryCompleted();
 
     public void RequestSuspension()
     {
         lock (_lock)
-            _shouldSuspend ??= NewTcs();
+            _released ??= NewTcs();
     }
 
     public void Release()
     {
-        TaskCompletionSource? shouldSuspend;
+        TaskCompletionSource? released;
         lock (_lock)
         {
-            if (_shouldSuspend == null)
+            if (_released == null)
                 return;
-            
-            shouldSuspend = _shouldSuspend;
-            _shouldSuspend = null;
+
+            released = _released;
+            _released = null;
             _allSuspended = null;
         }
 
-        shouldSuspend.SetResult();
+        released.SetResult();
     }
 
     public Task WaitForAllSuspended()
     {
         lock (_lock)
         {
-            if (Suspended == Total)
+            if (Running == 0)
                 return Task.CompletedTask;
 
             _allSuspended ??= NewTcs();
             return _allSuspended.Task;
-        }
-    }
-
-    private void SignalIfAllSuspended()
-    {
-        if (_allSuspended is null || Suspended != Total)
-            return;
-
-        _allSuspended.TrySetResult();
-    }
-
-    private void SubflowOrMessageDeliveryCompleted()
-    {
-        lock (_lock)
-        {
-            Total--;
-            SignalIfAllSuspended();
         }
     }
 

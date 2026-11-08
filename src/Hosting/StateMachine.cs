@@ -83,7 +83,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     
     private async Task<TResult> RunFlow(TFlow flow, TParam param)
     {
-        _suspensionBarrier.SubflowStarted();
+        _suspensionBarrier.Enter();
         Context.Scope.SetRoot();
         try
         {
@@ -91,7 +91,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         }
         finally
         {
-            _suspensionBarrier.SubflowCompleted();
+            _suspensionBarrier.Leave();
         }
     }
 }

@@ -27,7 +27,7 @@ public class WhenAllTests
         firstGate.SetResult();
 
         CollectionAssert.AreEqual(new[] { 1, 2, 3 }, await whenAll);
-        Assert.AreEqual(0, suspensionBarrier.Total);
+        Assert.AreEqual(0, suspensionBarrier.Running);
     }
 
     [TestMethod]
@@ -102,7 +102,7 @@ public class WhenAllTests
 
         siblingGate.SetResult();
         await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(() => whenAll);
-        Assert.AreEqual(0, firstSuspensionBarrier.Total);
+        Assert.AreEqual(0, firstSuspensionBarrier.Running);
 
         var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(), NoSync, new TimeoutsManager());
         var replay = CreateContext(replayStates, new SuspensionBarrier());
