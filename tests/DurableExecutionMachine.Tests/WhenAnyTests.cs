@@ -25,8 +25,7 @@ public class WhenAnyTests
 
         Assert.AreEqual("winner", winner);
         Assert.IsTrue(loserToken.IsCancellationRequested);
-        Assert.AreEqual(0, suspensionBarrier.Total);
-        Assert.AreEqual(0, suspensionBarrier.Suspended);
+        Assert.AreEqual(0, suspensionBarrier.Running);
     }
 
     [TestMethod]
@@ -50,7 +49,7 @@ public class WhenAnyTests
         Assert.AreEqual(2, winner);
         Assert.IsTrue(loserCancelled);
         Assert.IsNull(timeoutsManager.MinimumTimeout);
-        Assert.AreEqual(0, suspensionBarrier.Suspended);
+        Assert.AreEqual(0, suspensionBarrier.Running);
     }
 
     [TestMethod]

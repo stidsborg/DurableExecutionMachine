@@ -93,20 +93,12 @@ public class Context
             expired.TrySetCanceled(cancellationToken);
         });
 
-        _suspensionBarrier.SubflowSuspended();
-        try
-        {
-            await expired.Task;
-        }
-        finally
-        {
-            await _suspensionBarrier.ResumeSubflow();
-        }
+        await _suspensionBarrier.WaitSuspended(expired.Task);
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
     {
-        _suspensionBarrier.SubflowStarted();
+        _suspensionBarrier.Enter();
         try
         {
             return await Capture(async () =>
@@ -117,7 +109,7 @@ public class Context
         }
         finally
         {
-            _suspensionBarrier.SubflowCompleted();
+            _suspensionBarrier.Leave();
         }
     }
 
@@ -127,15 +119,7 @@ public class Context
             var tasks = children.Select(child => Parallel(child, flush)).ToArray();
 
             // the parent counts as suspended while it waits, so a sync can complete while the children are parked
-            _suspensionBarrier.SubflowSuspended();
-            try
-            {
-                return await Task.WhenAll(tasks);
-            }
-            finally
-            {
-                await _suspensionBarrier.ResumeSubflow();
-            }
+            return await _suspensionBarrier.WaitSuspended(Task.WhenAll(tasks));
         }, flush);
 
     // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined
@@ -166,7 +150,7 @@ public class Context
             
             if (!hasWinner)
             {
-                var first = await WaitAsSuspended(Task.WhenAny(tasks));
+                var first = await _suspensionBarrier.WaitSuspended(Task.WhenAny(tasks));
                 winnerIndex = Array.IndexOf(tasks, first);
 
                 // stored before the losers are cancelled, so a restart during the join cancels them again
@@ -176,7 +160,7 @@ public class Context
             await cancellation.CancelAsync();
             try
             {
-                await WaitAsSuspended(Task.WhenAll(tasks));
+                await _suspensionBarrier.WaitSuspended(Task.WhenAll(tasks));
             }
             catch
             {
@@ -185,20 +169,6 @@ public class Context
 
             return await tasks[winnerIndex];
         }, flush);
-    }
-
-    // the parent counts as suspended while it waits, so a sync can complete while the children are parked
-    private async Task<TResult> WaitAsSuspended<TResult>(Task<TResult> task)
-    {
-        _suspensionBarrier.SubflowSuspended();
-        try
-        {
-            return await task;
-        }
-        finally
-        {
-            await _suspensionBarrier.ResumeSubflow();
-        }
     }
 
     // without a timeout the flow waits until a matching message arrives, so the result is never null

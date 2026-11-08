@@ -111,7 +111,7 @@ public class MessagesTests
         var states = new States(suspensionBarrier, NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
-        suspensionBarrier.SubflowStarted();
+        suspensionBarrier.Enter();
         var messageId = new ExecutionScopeId("0");
         var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: null);
 
