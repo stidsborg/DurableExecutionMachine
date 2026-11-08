@@ -46,7 +46,6 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         ArgumentNullException.ThrowIfNull(param);
 
         _states.SetState(_paramId, param, typeof(TParam), removeDescendants: false);
-        _runningAndWaiting.SubflowStarted();
         _flowTask = RunFlow(flow, param);
     }
 
@@ -66,7 +65,6 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         if (!_states.TryGet<TParam>(_paramId, out var param))
             throw new InvalidOperationException("No stored parameter found - did you mean to call Start(flow, param) to begin a new execution?");
 
-        _runningAndWaiting.SubflowStarted();
         _flowTask = RunFlow(flow, param);
     }
     
@@ -86,6 +84,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     
     private async Task<TResult> RunFlow(TFlow flow, TParam param)
     {
+        _runningAndWaiting.SubflowStarted();
         Context.Scope.SetRoot();
         try
         {
