@@ -7,19 +7,19 @@ public class Context
 {
     private readonly States _states;
     private readonly Messages _messages;
-    private readonly RunningAndWaiting _runningAndWaiting;
+    private readonly SuspensionBarrier _suspensionBarrier;
     private readonly TimeoutsManager _timeoutsManager;
     private readonly UtcNow _utcNow;
     
     internal ExecutionScope Scope { get; }
     internal Messages Messages => _messages;
     
-    internal Context(ExecutionScope scope, States states, Messages messages, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
+    internal Context(ExecutionScope scope, States states, Messages messages, SuspensionBarrier suspensionBarrier, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
         _states = states;
         Scope = scope;
         _messages = messages;
-        _runningAndWaiting = runningAndWaiting;
+        _suspensionBarrier = suspensionBarrier;
         _timeoutsManager = timeoutsManager;
         _utcNow = utcNow;
     }
@@ -93,31 +93,31 @@ public class Context
             expired.TrySetCanceled(cancellationToken);
         });
 
-        _runningAndWaiting.SubflowSuspended();
+        _suspensionBarrier.SubflowSuspended();
         try
         {
             await expired.Task;
         }
         finally
         {
-            await _runningAndWaiting.ResumeSubflow();
+            await _suspensionBarrier.ResumeSubflow();
         }
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
     {
-        _runningAndWaiting.SubflowStarted();
+        _suspensionBarrier.SubflowStarted();
         try
         {
             return await Capture(async () =>
             {
-                await _runningAndWaiting.SuspendIfNeeded();
+                await _suspensionBarrier.SuspendIfNeeded();
                 return await subTask();
             }, flush);
         }
         finally
         {
-            _runningAndWaiting.SubflowCompleted();
+            _suspensionBarrier.SubflowCompleted();
         }
     }
 
@@ -127,14 +127,14 @@ public class Context
             var tasks = children.Select(child => Parallel(child, flush)).ToArray();
 
             // the parent counts as suspended while it waits, so a sync can complete while the children are parked
-            _runningAndWaiting.SubflowSuspended();
+            _suspensionBarrier.SubflowSuspended();
             try
             {
                 return await Task.WhenAll(tasks);
             }
             finally
             {
-                await _runningAndWaiting.ResumeSubflow();
+                await _suspensionBarrier.ResumeSubflow();
             }
         }, flush);
 
@@ -190,14 +190,14 @@ public class Context
     // the parent counts as suspended while it waits, so a sync can complete while the children are parked
     private async Task<TResult> WaitAsSuspended<TResult>(Task<TResult> task)
     {
-        _runningAndWaiting.SubflowSuspended();
+        _suspensionBarrier.SubflowSuspended();
         try
         {
             return await task;
         }
         finally
         {
-            await _runningAndWaiting.ResumeSubflow();
+            await _suspensionBarrier.ResumeSubflow();
         }
     }
 

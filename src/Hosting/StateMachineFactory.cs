@@ -10,27 +10,27 @@ public class StateMachineFactory<TFlow, TParam, TResult>(
 {
     public StateMachine<TFlow, TParam, TResult> New()
     {
-        var runningAndWaiting = new RunningAndWaiting();
+        var suspensionBarrier = new SuspensionBarrier();
         var timeoutsManager = new TimeoutsManager();
         return new StateMachine<TFlow, TParam, TResult>(
-            startFlow, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow);
+            startFlow, new States(suspensionBarrier, syncCallback, timeoutsManager), suspensionBarrier, timeoutsManager, utcNow: () => DateTime.UtcNow);
     }
     
     public StateMachine<TFlow, TParam, TResult> New(Func<TFlow, TParam, Context, Task<TResult>> startFlow, SyncCallback syncCallback)
     {
-        var runningAndWaiting = new RunningAndWaiting();
+        var suspensionBarrier = new SuspensionBarrier();
         var timeoutsManager = new TimeoutsManager();
         return new StateMachine<TFlow, TParam, TResult>(
-            startFlow, new States(runningAndWaiting, syncCallback, timeoutsManager), runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow);
+            startFlow, new States(suspensionBarrier, syncCallback, timeoutsManager), suspensionBarrier, timeoutsManager, utcNow: () => DateTime.UtcNow);
     }
 
     public StateMachine<TFlow, TParam, TResult> Deserialize(byte[] bytes)
     {
-        var runningAndWaiting = new RunningAndWaiting();
+        var suspensionBarrier = new SuspensionBarrier();
         var timeoutsManager = new TimeoutsManager();
-        var states = States.Deserialize(bytes, runningAndWaiting, syncCallback, timeoutsManager);
+        var states = States.Deserialize(bytes, suspensionBarrier, syncCallback, timeoutsManager);
         return new StateMachine<TFlow, TParam, TResult>(
-            startFlow, states, runningAndWaiting, timeoutsManager, utcNow: () => DateTime.UtcNow
+            startFlow, states, suspensionBarrier, timeoutsManager, utcNow: () => DateTime.UtcNow
         );
     }
 }

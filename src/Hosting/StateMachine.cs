@@ -8,7 +8,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 {
     private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
     private readonly States _states;
-    private readonly RunningAndWaiting _runningAndWaiting;
+    private readonly SuspensionBarrier _suspensionBarrier;
     
     private TFlow _flow;
     private Task<TResult> _flowTask;
@@ -19,21 +19,21 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     internal StateMachine(
         Func<TFlow, TParam, Context, Task<TResult>> startFlow,
         States states,
-        RunningAndWaiting runningAndWaiting,
+        SuspensionBarrier suspensionBarrier,
         TimeoutsManager timeoutsManager,
         UtcNow utcNow)
     {
         _startFlow = startFlow;
         _states = states;
-        _runningAndWaiting = runningAndWaiting;
-        Context = CreateContext(states, runningAndWaiting, timeoutsManager, utcNow);
+        _suspensionBarrier = suspensionBarrier;
+        Context = CreateContext(states, suspensionBarrier, timeoutsManager, utcNow);
     }
 
-    private static Context CreateContext(States states, RunningAndWaiting runningAndWaiting, TimeoutsManager timeoutsManager, UtcNow utcNow)
+    private static Context CreateContext(States states, SuspensionBarrier suspensionBarrier, TimeoutsManager timeoutsManager, UtcNow utcNow)
     {
         var messages = new Messages(states, timeoutsManager, utcNow);
         messages.Initialize();
-        return new Context(new ExecutionScope(), states, messages, runningAndWaiting, timeoutsManager, utcNow);
+        return new Context(new ExecutionScope(), states, messages, suspensionBarrier, timeoutsManager, utcNow);
     }
     
     //can this work with multiple threads?
@@ -50,13 +50,13 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 
     public async Task Suspend()
     {
-        _runningAndWaiting.Suspend();
-        await _runningAndWaiting.WaitForAllSuspended();
+        _suspensionBarrier.RequestSuspension();
+        await _suspensionBarrier.WaitForAllSuspended();
     }
 
     public void ResumeAfterSuspend()
     {
-        _runningAndWaiting.Resume();
+        _suspensionBarrier.Release();
     }
 
     public void Resume(TFlow flow)
@@ -83,7 +83,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     
     private async Task<TResult> RunFlow(TFlow flow, TParam param)
     {
-        _runningAndWaiting.SubflowStarted();
+        _suspensionBarrier.SubflowStarted();
         Context.Scope.SetRoot();
         try
         {
@@ -91,7 +91,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         }
         finally
         {
-            _runningAndWaiting.SubflowCompleted();
+            _suspensionBarrier.SubflowCompleted();
         }
     }
 }

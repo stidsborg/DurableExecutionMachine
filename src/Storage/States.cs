@@ -9,7 +9,7 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Storage;
 
-internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
+internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
 {
     private readonly Dictionary<ExecutionScopeId, Lazy<byte[]>> _states = new();
     private static readonly Lazy<byte[]> Null = new(Array.Empty<byte>());
@@ -18,7 +18,7 @@ internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCall
     private readonly SemaphoreSlim _flushSemaphore = new(1);
     private ExceptionDispatchInfo? _thrownException;
     
-    internal RunningAndWaiting RunningAndWaiting { get; } = runningAndWaiting;
+    internal SuspensionBarrier SuspensionBarrier { get; } = suspensionBarrier;
     internal SyncCallback SyncCallback { get; } = syncCallback;
     internal TimeoutsManager TimeoutsManager { get; } = timeoutsManager;
 
@@ -188,13 +188,13 @@ internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCall
         return exists;
     }
 
-    public static States Deserialize(byte[] bytes, RunningAndWaiting runningAndWaiting, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
+    public static States Deserialize(byte[] bytes, SuspensionBarrier suspensionBarrier, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
     {
         var segments = ByteArrayMarshaller.Deserialize(bytes);
         if (segments.Count % 2 != 0)
             throw new InvalidOperationException("Serialized states must contain an even number of segments");
 
-        var states = new States(runningAndWaiting, syncCallback, timeoutsManager);
+        var states = new States(suspensionBarrier, syncCallback, timeoutsManager);
         for (var i = 0; i < segments.Count; i += 2)
         {
             var id = new ExecutionScopeId(segments[i]!.Value.ToStringFromUtf8Bytes());
@@ -208,7 +208,7 @@ internal class States(RunningAndWaiting runningAndWaiting, SyncCallback syncCall
     public static Dictionary<ExecutionScopeId, object?> DeserializeToDictionary(byte[] bytes)
     {
         using var timeoutsManager = new TimeoutsManager();
-        var states = Deserialize(bytes, new RunningAndWaiting(), (_, _) => Task.CompletedTask, timeoutsManager);
+        var states = Deserialize(bytes, new SuspensionBarrier(), (_, _) => Task.CompletedTask, timeoutsManager);
         return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value.Value));
     }
 
