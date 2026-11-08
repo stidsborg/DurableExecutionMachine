@@ -54,11 +54,11 @@ internal class SuspensionBarrier
             if (_released == null)
                 return;
 
-        await WaitSuspended(Task.CompletedTask);
+        await SuspendedWhile(Task.CompletedTask);
     }
 
     // the caller counts as suspended while it waits, so a suspension can complete in the meantime
-    public async Task WaitSuspended(Task task)
+    public async Task SuspendedWhile(Task task)
     {
         Leave();
         try
@@ -71,7 +71,7 @@ internal class SuspensionBarrier
         }
     }
 
-    public async Task<T> WaitSuspended<T>(Task<T> task)
+    public async Task<T> SuspendedWhile<T>(Task<T> task)
     {
         Leave();
         try

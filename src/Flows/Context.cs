@@ -93,7 +93,7 @@ public class Context
             expired.TrySetCanceled(cancellationToken);
         });
 
-        await _suspensionBarrier.WaitSuspended(expired.Task);
+        await _suspensionBarrier.SuspendedWhile(expired.Task);
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
@@ -119,7 +119,7 @@ public class Context
             var tasks = children.Select(child => Parallel(child, flush)).ToArray();
 
             // the parent counts as suspended while it waits, so a sync can complete while the children are parked
-            return await _suspensionBarrier.WaitSuspended(Task.WhenAll(tasks));
+            return await _suspensionBarrier.SuspendedWhile(Task.WhenAll(tasks));
         }, flush);
 
     // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined
@@ -150,7 +150,7 @@ public class Context
             
             if (!hasWinner)
             {
-                var first = await _suspensionBarrier.WaitSuspended(Task.WhenAny(tasks));
+                var first = await _suspensionBarrier.SuspendedWhile(Task.WhenAny(tasks));
                 winnerIndex = Array.IndexOf(tasks, first);
 
                 // stored before the losers are cancelled, so a restart during the join cancels them again
@@ -160,7 +160,7 @@ public class Context
             await cancellation.CancelAsync();
             try
             {
-                await _suspensionBarrier.WaitSuspended(Task.WhenAll(tasks));
+                await _suspensionBarrier.SuspendedWhile(Task.WhenAll(tasks));
             }
             catch
             {

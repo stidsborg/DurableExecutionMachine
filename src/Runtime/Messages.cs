@@ -110,7 +110,7 @@ internal class Messages
             }
         });
 
-        return await _states.SuspensionBarrier.WaitSuspended(tcs.Task);
+        return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
     }
 
     private void TryToDeliver()
