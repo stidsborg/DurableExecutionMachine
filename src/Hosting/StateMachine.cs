@@ -7,7 +7,6 @@ namespace DurableExecutionMachine.Hosting;
 public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 {
     private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
-    private readonly SyncCallback _syncCallback;
     private readonly States _states;
     private readonly RunningAndWaiting _runningAndWaiting;
 
@@ -20,14 +19,12 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 
     internal StateMachine(
         Func<TFlow, TParam, Context, Task<TResult>> startFlow,
-        SyncCallback syncCallback,
         States states,
         RunningAndWaiting runningAndWaiting,
         TimeoutsManager timeoutsManager,
         UtcNow utcNow)
     {
         _startFlow = startFlow;
-        _syncCallback = syncCallback;
         _states = states;
         _runningAndWaiting = runningAndWaiting;
         Context = CreateContext(states, runningAndWaiting, timeoutsManager, utcNow);
@@ -53,24 +50,15 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         _flowTask = RunFlow(flow, param);
     }
 
-    public async Task Sync()
-    {
-        _runningAndWaiting.Suspend();
-        try
-        {
-            await _runningAndWaiting.WaitForAllSuspended();
-            var (bytes, minimumTimeout) = _states.Serialize();
-            await _syncCallback(bytes, minimumTimeout);
-        }
-        finally
-        {
-            _runningAndWaiting.Resume();
-        }
-    }
-
     public async Task Suspend()
     {
-        
+        _runningAndWaiting.Suspend();
+        await _runningAndWaiting.WaitForAllSuspended();
+    }
+
+    public void ResumeAfterSuspend()
+    {
+        _runningAndWaiting.Resume();
     }
 
     public void Resume(TFlow flow)
@@ -84,11 +72,8 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     
     public Task DeliverMessage(object message, string? idempotencyKey = null, TimeSpan? timeout = null)
         => Context.Messages.Deliver(message, idempotencyKey, timeout);
-    
-    public SerializedStateMachine Serialize()
-    {
-        throw new NotImplementedException();
-    }
+
+    public SerializedStateMachine Serialize() => _states.Serialize();
 
     public void SetState(string id, byte[]  bytes)
     {

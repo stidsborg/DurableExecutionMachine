@@ -48,7 +48,8 @@ public class CaptureIdTests
         var stm = HelperFactory.New();
 
         stm.Start(flow, param: 1);
-        await stm.Sync();
+        await stm.Suspend();
+        stm.ResumeAfterSuspend();
 
         Assert.IsTrue(stm.IsCompleted);
         CollectionAssert.AreEqual(new[] { "0", "1" }, flow.Scopes);
@@ -84,7 +85,8 @@ public class CaptureIdTests
         var stm = Factory.New();
 
         stm.Start(flow, param: 1);
-        await stm.Sync();
+        await stm.Suspend();
+        stm.ResumeAfterSuspend();
 
         Assert.IsTrue(stm.IsCompleted);
         return flow.Scopes;

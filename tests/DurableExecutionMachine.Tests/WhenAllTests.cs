@@ -144,7 +144,7 @@ public class WhenAllTests
     }
 
     [TestMethod]
-    public async Task Sync_Completes_WhileWhenAllChildIsParkedInDelay()
+    public async Task Suspend_Completes_WhileWhenAllChildIsParkedInDelay()
     {
         var factory = new StateMachineFactory<object, int, int>(
             async (_, _, ctx) =>
@@ -161,7 +161,8 @@ public class WhenAllTests
         var stm = factory.New();
 
         stm.Start(new object(), param: 0);
-        await stm.Sync().WaitAsync(TimeSpan.FromSeconds(5));
+        await stm.Suspend().WaitAsync(TimeSpan.FromSeconds(5));
+        stm.ResumeAfterSuspend();
 
         Assert.IsFalse(stm.IsCompleted);
     }

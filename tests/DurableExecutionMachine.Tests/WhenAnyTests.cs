@@ -288,7 +288,7 @@ public class WhenAnyTests
     }
 
     [TestMethod]
-    public async Task Sync_Completes_WhileWhenAnyChildrenAreParkedInDelay()
+    public async Task Suspend_Completes_WhileWhenAnyChildrenAreParkedInDelay()
     {
         var factory = new StateMachineFactory<object, int, int>(
             (_, _, ctx) => ctx.WhenAny([
@@ -300,7 +300,8 @@ public class WhenAnyTests
         var stm = factory.New();
 
         stm.Start(new object(), param: 0);
-        await stm.Sync().WaitAsync(TimeSpan.FromSeconds(5));
+        await stm.Suspend().WaitAsync(TimeSpan.FromSeconds(5));
+        stm.ResumeAfterSuspend();
 
         Assert.IsFalse(stm.IsCompleted);
     }
