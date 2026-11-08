@@ -6,7 +6,7 @@ namespace DurableExecutionMachine.Hosting;
 
 public class StateMachineFactory<TFlow, TParam, TResult>(
     Func<TFlow, TParam, Context, Task<TResult>> startFlow,
-    SyncCallback syncCallback)
+    SyncCallback syncCallback) where TParam : notnull
 {
     public StateMachine<TFlow, TParam, TResult> New()
     {
