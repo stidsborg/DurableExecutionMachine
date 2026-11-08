@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Runtime;
 
-internal class RunningAndWaiting
+internal class SuspensionBarrier
 {
     private readonly Lock _lock = new();
     
@@ -89,13 +89,13 @@ internal class RunningAndWaiting
 
     public void SubflowCompleted() => SubflowOrMessageDeliveryCompleted();
 
-    public void Suspend()
+    public void RequestSuspension()
     {
         lock (_lock)
             _shouldSuspend ??= NewTcs();
     }
 
-    public void Resume()
+    public void Release()
     {
         TaskCompletionSource? shouldSuspend;
         lock (_lock)
