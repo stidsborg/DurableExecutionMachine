@@ -9,8 +9,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
     private readonly States _states;
     private readonly RunningAndWaiting _runningAndWaiting;
-
-    private Dictionary<int, byte[]> _state;
+    
     private TFlow _flow;
     private Task<TResult> _flowTask;
     private readonly ExecutionScopeId _paramId = ExecutionScopeId.Root.CreateChild(-2);
