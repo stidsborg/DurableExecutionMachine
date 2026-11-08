@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="samples/DurableExecutionMachine.Samples/DurableExecutionMachine.Samples.csproj" />
+  <Project Path="samples/DurableExecutionMachine.Samples.Dormouse/DurableExecutionMachine.Samples.Dormouse.csproj" />
   <Project Path="src/DurableExecutionMachine.csproj" />
   <Project Path="tests/DurableExecutionMachine.Tests/DurableExecutionMachine.Tests.csproj" />
 </Solution>
