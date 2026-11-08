@@ -128,6 +128,108 @@ public class MessagesTests
     }
 
     [TestMethod]
+    public void DeliverWithoutFlush_StoresMessage_WithoutFlushing()
+    {
+        var flushes = 0;
+        var states = new States(new SuspensionBarrier(), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+
+        messages.DeliverWithoutFlush("hello", idempotencyKey: null);
+
+        var restartedStates = States.Deserialize(states.GetBytes(), new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var inbox = States
+            .DeserializeToDictionary(restartedStates.GetBytes())
+            .Where(kv => kv.Key.Id.StartsWith("-1.0."))
+            .Select(kv => kv.Value)
+            .ToList();
+        CollectionAssert.AreEqual(new object[] { "hello" }, inbox);
+        Assert.AreEqual(0, flushes);
+    }
+
+    [TestMethod]
+    public void DeliverWithoutFlush_IgnoresDuplicateIdempotencyKey()
+    {
+        var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+
+        messages.DeliverWithoutFlush("hello", idempotencyKey: "key");
+        messages.DeliverWithoutFlush("hello", idempotencyKey: "key");
+
+        var storedMessages = States
+            .DeserializeToDictionary(states.GetBytes())
+            .Keys
+            .Count(id => id.Id.StartsWith("-1.0."));
+        Assert.AreEqual(1, storedMessages);
+    }
+
+    [TestMethod]
+    public async Task DeliverWithoutFlush_WhileSuspended_IsReceivedByLaterWait()
+    {
+        var suspensionBarrier = new SuspensionBarrier();
+        var states = new States(suspensionBarrier, NoSync, new TimeoutsManager());
+        var messages = new Messages(states, new TimeoutsManager(), Now);
+        messages.Initialize();
+
+        suspensionBarrier.RequestSuspension();
+        await suspensionBarrier.WaitForAllSuspended().WaitAsync(TimeSpan.FromSeconds(5));
+        messages.DeliverWithoutFlush("hello", idempotencyKey: null);
+        suspensionBarrier.Release();
+
+        suspensionBarrier.Enter();
+        var messageId = new ExecutionScopeId("0");
+        var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: null);
+
+        Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public async Task DeliverWithoutFlush_WhileSuspended_IsReceivedByWaitingFlow_WhichContinuesOnResume()
+    {
+        var stm = NewReceivingStateMachine();
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        stm.Start(received, "param");
+        await stm.Suspend().WaitAsync(TimeSpan.FromSeconds(5));
+
+        stm.DeliverMessageWithoutFlush("hello");
+
+        var stored = States.DeserializeToDictionary(stm.Serialize().States);
+        Assert.IsFalse(stored.Keys.Any(id => id.Id.StartsWith("-1.0.")), "the message should have left the inbox");
+        Assert.IsTrue(stored.Values.Contains("hello"), "the message should be stored for the wait");
+        Assert.IsFalse(received.Task.IsCompleted);
+
+        stm.ResumeAfterSuspend();
+        Assert.AreEqual("hello", await received.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public async Task DeliverWithoutFlush_IsReceivedByWaitingFlow_WhenRunning()
+    {
+        var stm = NewReceivingStateMachine();
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        stm.Start(received, "param");
+        // the flow is waiting for the message once every subflow is suspended
+        await stm.Suspend().WaitAsync(TimeSpan.FromSeconds(5));
+        stm.ResumeAfterSuspend();
+
+        stm.DeliverMessageWithoutFlush("hello");
+
+        Assert.AreEqual("hello", await received.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    private static StateMachine<TaskCompletionSource<string>, string, string> NewReceivingStateMachine()
+        => new StateMachineFactory<TaskCompletionSource<string>, string, string>(
+            startFlow: async (received, _, ctx) =>
+            {
+                var message = await ctx.Message<string>();
+                received.SetResult(message);
+                return message;
+            },
+            syncCallback: NoSync
+        ).New();
+
+    [TestMethod]
     public async Task Subscribe_PrefersMessageInInbox_OverExpiredTimeout()
     {
         for (var i = 0; i < 1_000; i++)
