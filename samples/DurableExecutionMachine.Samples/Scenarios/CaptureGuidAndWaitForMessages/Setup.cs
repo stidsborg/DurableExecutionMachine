@@ -3,7 +3,7 @@ using DurableExecutionMachine.Hosting;
 namespace DurableExecutionMachine.Samples.Scenarios.CaptureGuidAndWaitForMessages;
 
 /// <summary>
-/// Spans two runs of the process. The first run starts the flow, delivers the first greeting, syncs and exits while
+/// Spans two runs of the process. The first run starts the flow, delivers the first greeting, suspends, stores the state and exits while
 /// the flow is still waiting. The second run restores the machine from the file: on replay the guid and the first
 /// greeting are read back from state instead of being produced again, and the flow completes once the remaining
 /// greetings are delivered. The file is then deleted, so the run after that starts over.
@@ -33,8 +33,11 @@ public static class Setup
             Console.WriteLine("Delivering 'hello'");
             await stm.DeliverMessage("hello", timeout: FlushWithin);
 
-            Console.WriteLine("Syncing");
-            await stm.Sync();
+            Console.WriteLine("Suspending and storing the state");
+            await stm.Suspend();
+            var (states, minimumTimeout) = stm.Serialize();
+            await store.Save(states, minimumTimeout);
+            stm.ResumeAfterSuspend();
 
             Console.WriteLine($"Stored state in {FilePath} - run the scenario again to resume the execution");
         }
