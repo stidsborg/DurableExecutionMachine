@@ -4,7 +4,7 @@ using DurableExecutionMachine.Storage;
 
 namespace DurableExecutionMachine.Hosting;
 
-public class StateMachine<TFlow, TParam, TResult>
+public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 {
     private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
     private readonly SyncCallback _syncCallback;
@@ -14,6 +14,7 @@ public class StateMachine<TFlow, TParam, TResult>
     private Dictionary<int, byte[]> _state;
     private TFlow _flow;
     private Task<TResult> _flowTask;
+    private readonly ExecutionScopeId _paramId = ExecutionScopeId.Root.CreateChild(-2);
 
     internal Context Context { get; }
 
@@ -45,21 +46,11 @@ public class StateMachine<TFlow, TParam, TResult>
     
     public void Start(TFlow flow, TParam param)
     {
-        _runningAndWaiting.SubflowStarted();
-        _flowTask = RunFlow();
+        ArgumentNullException.ThrowIfNull(param);
 
-        async Task<TResult> RunFlow()
-        {
-            Context.Scope.SetRoot();
-            try
-            {
-                return await _startFlow(flow, param, Context);
-            }
-            finally
-            {
-                _runningAndWaiting.SubflowCompleted();
-            }
-        }
+        _states.SetState(_paramId, param, typeof(TParam), removeDescendants: false);
+        _runningAndWaiting.SubflowStarted();
+        _flowTask = RunFlow(flow, param);
     }
 
     public async Task Sync()
@@ -82,9 +73,13 @@ public class StateMachine<TFlow, TParam, TResult>
         
     }
 
-    public void Resume()
+    public void Resume(TFlow flow)
     {
-        
+        if (!_states.TryGet(_paramId, out TParam param))
+            throw new InvalidOperationException("No stored parameter found - did you mean to call Start(flow, param) to begin a new execution?");
+
+        _runningAndWaiting.SubflowStarted();
+        _flowTask = RunFlow(flow, param);
     }
     
     public Task DeliverMessage(object message, string? idempotencyKey = null, TimeSpan? timeout = null)
@@ -102,5 +97,18 @@ public class StateMachine<TFlow, TParam, TResult>
     
     public void RemoveState(string id)
     {
+    }
+    
+    private async Task<TResult> RunFlow(TFlow flow, TParam param)
+    {
+        Context.Scope.SetRoot();
+        try
+        {
+            return await _startFlow(flow, param, Context);
+        }
+        finally
+        {
+            _runningAndWaiting.SubflowCompleted();
+        }
     }
 }

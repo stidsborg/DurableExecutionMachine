@@ -42,7 +42,7 @@ public static class Setup
         {
             Console.WriteLine($"Restoring the execution from {FilePath}");
             var stm = factory.Deserialize(bytes);
-            stm.Start(new Flow(), param: 3);
+            stm.Resume(new Flow());
 
             Console.ReadLine();
             
