@@ -75,7 +75,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
 
     public void Resume(TFlow flow)
     {
-        if (!_states.TryGet(_paramId, out TParam param))
+        if (!_states.TryGet<TParam>(_paramId, out var param))
             throw new InvalidOperationException("No stored parameter found - did you mean to call Start(flow, param) to begin a new execution?");
 
         _runningAndWaiting.SubflowStarted();
