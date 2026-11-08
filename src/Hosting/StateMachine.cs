@@ -38,7 +38,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     
     //can this work with multiple threads?
     public bool IsCompleted => _flowTask.IsCompleted;
-    public TResult GetResult() => _flowTask.Result;
+    public TResult Completion() => _flowTask.Result;
     
     public void Start(TFlow flow, TParam param)
     {
