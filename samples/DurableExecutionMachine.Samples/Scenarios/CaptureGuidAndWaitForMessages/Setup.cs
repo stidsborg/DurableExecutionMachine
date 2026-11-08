@@ -35,7 +35,7 @@ public static class Setup
             Console.WriteLine("Delivering 'hey'");
             await stm.DeliverMessage("hey", timeout: FlushWithin);
 
-            Console.WriteLine($"Result: {stm.GetResult()}");
+            Console.WriteLine($"Result: {stm.Completion()}");
 
             File.Delete(FilePath);
             Console.WriteLine("Deleted the stored state - the next run starts a new execution");
