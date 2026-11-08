@@ -159,7 +159,28 @@ internal class Messages
         await flushed;
     }
 
+    // the message is in states when this returns, so every later flush or serialization of the machine contains it.
+    // it does not wait for a suspension to be released: a wait it is handed to then continues when the machine is resumed
+    public void DeliverWithoutFlush(object message, string? idempotencyKey)
+    {
+        AddToInbox(message, idempotencyKey);
+        TryToDeliver();
+    }
+
     private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
+    {
+        var nextFlush = AddToInbox(message, idempotencyKey);
+
+        TryToDeliver();
+
+        if (timeout is not null)
+            _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);
+
+        return nextFlush;
+    }
+
+    // returns the next flush, which persists the message or, for a duplicate, the original message
+    private Task AddToInbox(object message, string? idempotencyKey)
     {
         Task nextFlush = Task.CompletedTask;
         lock (_lock)
@@ -185,11 +206,6 @@ internal class Messages
                 _states.SetState(messageId, message, message.GetType(), removeDescendants: false);
                 _inbox[number] = message;
             });
-
-        TryToDeliver();
-
-        if (timeout is not null)
-            _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);
 
         return nextFlush;
     }
