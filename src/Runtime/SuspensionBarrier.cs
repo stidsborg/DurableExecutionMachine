@@ -1,3 +1,5 @@
+using DurableExecutionMachine.Hosting;
+
 namespace DurableExecutionMachine.Runtime;
 
 // counts the subflows and message deliveries that are running. a suspension is complete when none are running
@@ -10,6 +12,50 @@ internal class SuspensionBarrier
     private TaskCompletionSource? _allSuspended;
 
     public int Running { get; private set; }
+
+    // the running branches that wait for the sync callback after a flushed capture. each of them is also counted in Running
+    private int _awaitingSync;
+
+    // Running, AwaitingSync or Settled. how the flow ended is tracked by the state machine
+    public StateMachineStatus Status
+    {
+        get
+        {
+            lock (_lock)
+                if (Running > _awaitingSync)
+                    return StateMachineStatus.Running;
+                else if (_awaitingSync > 0)
+                    return StateMachineStatus.AwaitingSync;
+                else
+                    return StateMachineStatus.Settled;
+        }
+    }
+
+    // a suspension has been requested and has completed, so no flow code runs until it is released
+    public bool IsSuspended
+    {
+        get
+        {
+            lock (_lock)
+                return _released != null && Running == 0;
+        }
+    }
+
+    public async Task AwaitingSyncWhile(Func<Task> sync)
+    {
+        lock (_lock)
+            _awaitingSync++;
+
+        try
+        {
+            await sync();
+        }
+        finally
+        {
+            lock (_lock)
+                _awaitingSync--;
+        }
+    }
 
     // the caller is already running, so a suspension cannot complete before the new subflow is counted
     public void Enter()

@@ -45,7 +45,7 @@ public class Context
                     _states.SetState(id, result, result.GetType(), removeDescendants: true);
 
                 if (flush)
-                    await _states.Flush();
+                    await _suspensionBarrier.AwaitingSyncWhile(_states.Flush);
                 
                 return result;
             }

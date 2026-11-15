@@ -14,6 +14,9 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     private Task<TResult> _flowTask;
     private readonly ExecutionScopeId _paramId = ExecutionScopeId.Root.CreateChild(-2);
 
+    // NotStarted, Running while the flow has not ended, then Completed or Failed
+    private volatile StateMachineStatus _flowStatus = StateMachineStatus.NotStarted;
+
     internal Context Context { get; }
 
     internal StateMachine(
@@ -39,6 +42,20 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     //can this work with multiple threads?
     public bool IsCompleted => _flowTask.IsCompleted;
     public TResult Completion() => _flowTask.Result;
+
+    // a snapshot: unless the machine is suspended, timers and deliveries can change it at any time
+    public StateMachineStatus Status
+    {
+        get
+        {
+            var branchesStatus = _suspensionBarrier.Status;
+            // read after the barrier: the flow records how it ended before it leaves the barrier, so a finished flow is never reported as settled
+            var flowStatus = _flowStatus;
+            return flowStatus == StateMachineStatus.Running ? branchesStatus : flowStatus;
+        }
+    }
+
+    public bool IsSuspended => _suspensionBarrier.IsSuspended;
     
     public void Start(TFlow flow, TParam param)
     {
@@ -96,10 +113,18 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     private async Task<TResult> RunFlow(TFlow flow, TParam param)
     {
         _suspensionBarrier.Enter();
+        _flowStatus = StateMachineStatus.Running;
         Context.Scope.SetRoot();
         try
         {
-            return await _startFlow(flow, param, Context);
+            var result = await _startFlow(flow, param, Context);
+            _flowStatus = StateMachineStatus.Completed;
+            return result;
+        }
+        catch
+        {
+            _flowStatus = StateMachineStatus.Failed;
+            throw;
         }
         finally
         {
