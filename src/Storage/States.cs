@@ -14,7 +14,7 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
     private readonly Dictionary<ExecutionScopeId, Lazy<byte[]>> _states = new();
     private static readonly Lazy<byte[]> Null = new(Array.Empty<byte>());
     private readonly Lock _lock = new();
-    private readonly AsyncSignal _signal = new();
+    private readonly SyncBarrier _syncBarrier = new();
     private readonly SemaphoreSlim _flushSemaphore = new(1);
     private ExceptionDispatchInfo? _thrownException;
     
@@ -218,44 +218,32 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
             return new SerializedStateMachine(GetBytes(), TimeoutsManager.MinimumTimeout);
     }
 
-    public Task WaitForNextFlush()
-    {
-        lock (_lock)
-            return _signal.Wait();
-    }
+    public Task WaitForNextFlush() => _syncBarrier.Sync();
 
+    // flushes never overlap, as the sync barrier requires.
+    // after a failed flush every later flush fails too, so states written since (such as a capture failed by the flush) are never persisted,
+    // and anyone waiting for a flush keeps waiting
     public async Task Flush()
     {
-        TaskCompletionSource? signalTcs = null;
-
         await _flushSemaphore.WaitAsync();
         try
         {
+            _thrownException?.Throw();
+
             byte[] bytes;
             DateTime? minimumTimeout;
             lock (_lock)
             {
-                signalTcs = _signal.MoveNext();
-                if (_thrownException != null)
-                {
-                    signalTcs.TrySetException(_thrownException.SourceException);
-                    _thrownException.Throw();
-                }
-
+                _syncBarrier.SyncStarted();
                 (bytes, minimumTimeout) = Serialize();
             }
 
             await SyncCallback(bytes, minimumTimeout);
-            signalTcs.TrySetResult();
+            _syncBarrier.SyncCompleted();
         }
         catch (Exception e)
         {
-            lock (_lock)
-            {
-                _thrownException ??= ExceptionDispatchInfo.Capture(e);
-                signalTcs!.TrySetException(e);
-            }
-
+            _thrownException ??= ExceptionDispatchInfo.Capture(e);
             throw;
         }
         finally
