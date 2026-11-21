@@ -54,6 +54,12 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         await _suspensionBarrier.WaitForAllSuspended();
     }
 
+    /// <summary>
+    /// Completes when no subflow is running, i.e. every subflow is waiting or done. Unlike <see cref="Suspend"/>, nothing is held:
+    /// a subflow that is woken afterwards runs again.
+    /// </summary>
+    public Task Quiescence() => _suspensionBarrier.WaitForAllSuspended();
+
     public void ResumeAfterSuspend()
     {
         _suspensionBarrier.Release();
