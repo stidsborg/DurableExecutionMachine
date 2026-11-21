@@ -225,7 +225,7 @@ internal class Messages
         }
         catch
         {
-            // the failure reaches the caller through the flushed task
+            // a failed flush is the host's to handle, so the delivery keeps waiting for a flush that succeeds
         }
     }
 
