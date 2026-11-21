@@ -44,7 +44,11 @@ internal class SuspensionBarrier
         {
             Running--;
             if (Running == 0)
+            {
+                // reset, so a later wait waits for the next time no subflow is running
                 _allSuspended?.TrySetResult();
+                _allSuspended = null;
+            }
         }
     }
 
@@ -100,7 +104,6 @@ internal class SuspensionBarrier
 
             released = _released;
             _released = null;
-            _allSuspended = null;
         }
 
         released.SetResult();
