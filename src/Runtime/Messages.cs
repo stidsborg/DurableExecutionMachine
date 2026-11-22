@@ -110,7 +110,10 @@ internal class Messages
             }
         });
 
-        return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
+        var result = await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
+        // removed only now that this subflow is running again, so a fired timeout counts until then
+        _timeoutsManager.CancelTimeout(timeoutId);
+        return result;
     }
 
     private void TryToDeliver()
