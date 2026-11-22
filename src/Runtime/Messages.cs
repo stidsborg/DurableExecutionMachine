@@ -94,10 +94,7 @@ internal class Messages
             }
         });
 
-        if (timeoutAt is null)
-            return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
-
-        if (!await _states.SuspensionBarrier.SuspendedUntil(tcs.Task, timeoutId, timeoutAt.Value))
+        if (!await _states.SuspensionBarrier.SuspendedUntil(tcs.Task, timeoutId, timeoutAt))
             return await tcs.Task;
 
         lock (_lock)

@@ -95,8 +95,8 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
     }
 
     // as SuspendedWhile, but also completes when the timeout fires. returns true if the timeout fired before the task completed.
-    // the timeout is registered when the caller counts as suspended and removed when it is running again
-    public async Task<bool> SuspendedUntil(Task task, ExecutionScopeId timeoutId, DateTime timeout)
+    // the timeout is registered when the caller counts as suspended and removed when it is running again. without a timeout it never fires
+    public async Task<bool> SuspendedUntil(Task task, ExecutionScopeId timeoutId, DateTime? timeout)
     {
         var timedOut = NewTcs();
         lock (_lock)

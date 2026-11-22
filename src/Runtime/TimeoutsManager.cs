@@ -9,7 +9,8 @@ internal class TimeoutsManager : IDisposable
     private readonly Timer _timer;
     private bool _disposed;
     
-    private record RegisteredTimeout(DateTime Timeout, Action Callback);
+    // a waiter without a deadline is registered too, but never fires
+    private record RegisteredTimeout(DateTime? Timeout, Action Callback);
 
     public TimeoutsManager()
         => _timer = new Timer(_ => NotifyExpiredTimeouts(), state: null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -19,9 +20,7 @@ internal class TimeoutsManager : IDisposable
         get
         {
             lock (_lock)
-                return _timeouts.Count != 0
-                    ? _timeouts.Values.Select(t => t.Timeout).Min()
-                    : null;
+                return _timeouts.Values.Min(t => t.Timeout);
         }
     }
     
@@ -54,12 +53,12 @@ internal class TimeoutsManager : IDisposable
             _timeouts.Remove(id);
     }
     
-    public void RegisterTimeout(ExecutionScopeId id, DateTime timeout, Action callback)
+    public void RegisterTimeout(ExecutionScopeId id, DateTime? timeout, Action callback)
     {
         lock (_lock)
         {
-            if (!MinimumTimeout.HasValue || timeout < MinimumTimeout.Value)
-                ScheduleWakeUp(timeout);
+            if (timeout is { } at && (MinimumTimeout is not { } minimum || at < minimum))
+                ScheduleWakeUp(at);
 
             _timeouts[id] = new RegisteredTimeout(timeout, callback);
         }

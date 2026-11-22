@@ -41,4 +41,24 @@ public class SuspensionBarrierTests
         Assert.IsNull(timeoutsManager.MinimumTimeout);
         Assert.AreEqual(1, barrier.Running);
     }
+
+    [TestMethod]
+    public async Task SuspendedUntil_WithoutTimeout_IsNotPartOfMinimumTimeout_AndNeverFires()
+    {
+        using var timeoutsManager = new TimeoutsManager();
+        var barrier = new SuspensionBarrier(timeoutsManager);
+        barrier.Enter();
+        var completed = new TaskCompletionSource();
+
+        var wait = barrier.SuspendedUntil(completed.Task, new ExecutionScopeId("0"), timeout: null);
+        timeoutsManager.NotifyExpiredTimeouts();
+
+        Assert.IsFalse(wait.IsCompleted);
+        Assert.IsNull(timeoutsManager.MinimumTimeout);
+        Assert.AreEqual(0, barrier.Running);
+
+        completed.SetResult();
+        Assert.IsFalse(await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.AreEqual(1, barrier.Running);
+    }
 }
