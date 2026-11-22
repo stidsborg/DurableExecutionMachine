@@ -60,6 +60,12 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// </summary>
     public Task Quiescence() => _suspensionBarrier.WaitForAllSuspended();
 
+    /// <summary>
+    /// Completes when no subflow is running (see <see cref="Quiescence"/>) or a sync is requested that the last started sync doesn't cover.
+    /// Completes at once if either already holds.
+    /// </summary>
+    public async Task NextQuiescenceOrSync() => await Task.WhenAny(Quiescence(), _states.FlushRequested());
+
     public void ResumeAfterSuspend()
     {
         _suspensionBarrier.Release();
