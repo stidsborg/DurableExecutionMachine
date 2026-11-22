@@ -218,7 +218,7 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
             return new SerializedStateMachine(GetBytes(), TimeoutsManager.MinimumTimeout);
     }
 
-    public Task WaitForNextFlush() => _syncBarrier.Sync();
+    public Task WaitForNextFlush() => _syncBarrier.NextSync();
 
     public Task FlushRequested() => _syncBarrier.SyncRequested();
 

@@ -50,7 +50,7 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         {
             // delivered before the flow is resumed, so a wait for it is satisfied while replaying instead of being woken up afterwards.
             // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a flush
-            stm.DeliverMessageWithoutFlush(message, idempotencyKey: bus.Envelope?.Id.ToString());
+            _ = stm.DeliverMessage(message, idempotencyKey: bus.Envelope?.Id.ToString());
             stm.Resume(this);
         });
 

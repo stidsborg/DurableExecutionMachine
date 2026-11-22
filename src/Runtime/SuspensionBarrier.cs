@@ -1,6 +1,6 @@
 namespace DurableExecutionMachine.Runtime;
 
-// counts the subflows and message deliveries that are running. a suspension is complete when none are running
+// counts the subflows that are running. a suspension is complete when none are running
 internal class SuspensionBarrier
 {
     private readonly Lock _lock = new();

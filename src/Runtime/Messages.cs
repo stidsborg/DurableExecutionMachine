@@ -141,42 +141,14 @@ internal class Messages
         }
     }
 
-    public async Task Deliver(object message, string? idempotencyKey, TimeSpan? timeout)
-    {
-        // the delivery waits for a sync in progress, so nothing changes in states until the subflows are resumed,
-        // and it counts as running while it writes, so a sync waits for it
-        await _states.SuspensionBarrier.EnterWhenReleased();
-        Task flushed;
-        try
-        {
-            flushed = DeliverNow(message, idempotencyKey, timeout);
-        }
-        finally
-        {
-            _states.SuspensionBarrier.Leave();
-        }
-
-        await flushed;
-    }
-
-    // the message is in states when this returns, so every later flush or serialization of the machine contains it.
+    // the message is in states when this returns, so every later flush or serialization of the machine contains it, in the inbox or at the wait it was handed to.
+    // the returned task completes when such a flush completes. the delivery does not request one.
     // it does not wait for a suspension to be released: a wait it is handed to then continues when the machine is resumed
-    public void DeliverWithoutFlush(object message, string? idempotencyKey)
+    public Task Deliver(object message, string? idempotencyKey)
     {
-        AddToInbox(message, idempotencyKey);
+        var flushed = AddToInbox(message, idempotencyKey);
         TryToDeliver();
-    }
-
-    private Task DeliverNow(object message, string? idempotencyKey, TimeSpan? timeout)
-    {
-        var nextFlush = AddToInbox(message, idempotencyKey);
-
-        TryToDeliver();
-
-        if (timeout is not null)
-            _ = FlushIfNotFlushedWithin(timeout.Value, nextFlush);
-
-        return nextFlush;
+        return flushed;
     }
 
     // returns the next flush, which persists the message or, for a duplicate, the original message
@@ -208,25 +180,6 @@ internal class Messages
             });
 
         return nextFlush;
-    }
-
-    private async Task FlushIfNotFlushedWithin(TimeSpan timeout, Task flushed)
-    {
-        using var cts = new CancellationTokenSource();
-        if (await Task.WhenAny(flushed, Task.Delay(timeout, cts.Token)) == flushed)
-        {
-            await cts.CancelAsync();
-            return;
-        }
-
-        try
-        {
-            await _states.Flush();
-        }
-        catch
-        {
-            // a failed flush is the host's to handle, so the delivery keeps waiting for a flush that succeeds
-        }
     }
 
     private void SaveIdempotencyKey(int number, string idempotencyKey, long createdAt)
