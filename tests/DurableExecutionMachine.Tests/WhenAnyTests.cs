@@ -14,7 +14,7 @@ public class WhenAnyTests
     [TestMethod]
     public async Task WhenAny_ReturnsFirstToFinish_AndCancelsTheOthersToken()
     {
-        var suspensionBarrier = new SuspensionBarrier();
+        var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var ctx = CreateContext(NewStates(), suspensionBarrier);
         var loserToken = CancellationToken.None;
 
@@ -32,7 +32,7 @@ public class WhenAnyTests
     public async Task WhenAny_CancelsLosingDelay_AndRemovesItsTimeout()
     {
         var timeoutsManager = new TimeoutsManager();
-        var suspensionBarrier = new SuspensionBarrier();
+        var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var ctx = CreateContext(NewStates(), suspensionBarrier, timeoutsManager);
         var loserCancelled = false;
 
@@ -59,7 +59,7 @@ public class WhenAnyTests
         var timeoutsManager = new TimeoutsManager();
         var messages = new Messages(states, timeoutsManager, () => DateTime.UtcNow);
         messages.Initialize();
-        var ctx = CreateContext(states, new SuspensionBarrier(), timeoutsManager, messages);
+        var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()), timeoutsManager, messages);
 
         var winner = await ctx.WhenAny([
             async _ => await ctx.Message<string>(),
@@ -76,7 +76,7 @@ public class WhenAnyTests
     public async Task WhenAny_CancelsNestedWhenAny_InLosingBranch()
     {
         var timeoutsManager = new TimeoutsManager();
-        var ctx = CreateContext(NewStates(), new SuspensionBarrier(), timeoutsManager);
+        var ctx = CreateContext(NewStates(), new SuspensionBarrier(new TimeoutsManager()), timeoutsManager);
         var innerToken = CancellationToken.None;
 
         var winner = await ctx.WhenAny([
@@ -95,7 +95,7 @@ public class WhenAnyTests
     [TestMethod]
     public async Task WhenAny_NestedWinner_DoesNotCancelOuterSiblings()
     {
-        var ctx = CreateContext(NewStates(), new SuspensionBarrier());
+        var ctx = CreateContext(NewStates(), new SuspensionBarrier(new TimeoutsManager()));
         var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var siblingToken = CancellationToken.None;
 
@@ -120,7 +120,7 @@ public class WhenAnyTests
     [TestMethod]
     public async Task WhenAny_ThrowsWinnersException_WhenFirstToFinishFails()
     {
-        var ctx = CreateContext(NewStates(), new SuspensionBarrier());
+        var ctx = CreateContext(NewStates(), new SuspensionBarrier(new TimeoutsManager()));
         var loserToken = CancellationToken.None;
 
         await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(() => ctx.WhenAny<int>([
@@ -135,14 +135,14 @@ public class WhenAnyTests
     public async Task WhenAny_ReturnsStoredResult_OnReplay_WithoutRunningChildren()
     {
         var firstStates = NewStates();
-        var firstRun = CreateContext(firstStates, new SuspensionBarrier());
+        var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var firstResult = await firstRun.WhenAny([
             async ct => { await Task.Delay(Timeout.Infinite, ct); return "loser"; },
             _ => Task.FromResult("winner")
         ]);
         Assert.AreEqual("winner", firstResult);
 
-        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier());
+        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier(new TimeoutsManager()));
         var childRan = false;
         var replayResult = await replay.WhenAny([
             _ => { childRan = true; return Task.FromResult("first"); },
@@ -157,7 +157,7 @@ public class WhenAnyTests
     public async Task WhenAny_ReturnsStoredWinner_AndStartsLosersCancelled_OnReplay_WhenRestartedDuringJoin()
     {
         var firstStates = NewStates();
-        var firstRun = CreateContext(firstStates, new SuspensionBarrier());
+        var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var loserIgnoresCancellation = new TaskCompletionSource<string>();
         _ = firstRun.WhenAny([
             _ => loserIgnoresCancellation.Task,
@@ -165,7 +165,7 @@ public class WhenAnyTests
         ]);
         await Task.Delay(50);
 
-        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier());
+        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier(new TimeoutsManager()));
         var loserStartedCancelled = false;
         var winnerRan = false;
         var replayResult = await replay.WhenAny([
@@ -182,7 +182,7 @@ public class WhenAnyTests
     public async Task WhenAny_ThrowsStoredWinnersException_AndStartsLosersCancelled_OnReplay_WhenRestartedDuringJoin()
     {
         var firstStates = NewStates();
-        var firstRun = CreateContext(firstStates, new SuspensionBarrier());
+        var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var loserIgnoresCancellation = new TaskCompletionSource<int>();
         _ = firstRun.WhenAny<int>([
             _ => loserIgnoresCancellation.Task,
@@ -190,7 +190,7 @@ public class WhenAnyTests
         ]);
         await Task.Delay(50);
 
-        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier());
+        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier(new TimeoutsManager()));
         var loserStartedCancelled = false;
         var winnerRan = false;
         var exception = await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(
@@ -209,7 +209,7 @@ public class WhenAnyTests
     public async Task WhenAny_RunsLosersUnfinishedCaptureAgain_OnReplay_WhenRestartedDuringJoin()
     {
         var firstStates = NewStates();
-        var firstRun = CreateContext(firstStates, new SuspensionBarrier());
+        var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var captureRuns = 0;
         var captureNeverFinishes = new TaskCompletionSource<int>();
         _ = firstRun.WhenAny([
@@ -219,7 +219,7 @@ public class WhenAnyTests
         await Task.Delay(50);
         Assert.AreEqual(1, captureRuns);
 
-        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier());
+        var replay = CreateContext(Restart(firstStates), new SuspensionBarrier(new TimeoutsManager()));
         var replayResult = await replay.WhenAny([
             _ => replay.Capture(() => { captureRuns++; return 1; }),
             _ => Task.FromResult(-1)
@@ -233,7 +233,7 @@ public class WhenAnyTests
     public async Task WhenAny_ThrowsArgumentException_WithoutStoringIt_WhenGivenNoChildren()
     {
         var states = NewStates();
-        var ctx = CreateContext(states, new SuspensionBarrier());
+        var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
 
         await Assert.ThrowsExactlyAsync<ArgumentException>(() => ctx.WhenAny<int>([]));
 
@@ -244,7 +244,7 @@ public class WhenAnyTests
     public async Task WhenAny_CancelledCaptureInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
     {
         var states = NewStates();
-        var ctx = CreateContext(states, new SuspensionBarrier());
+        var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
         Exception? caught = null;
         var storedFailures = -1;
 
@@ -267,7 +267,7 @@ public class WhenAnyTests
     public async Task WhenAny_NestedWhenAnyInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
     {
         var states = NewStates();
-        var ctx = CreateContext(states, new SuspensionBarrier());
+        var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
         Exception? caught = null;
         var storedFailures = -1;
 
@@ -305,13 +305,13 @@ public class WhenAnyTests
         Assert.IsFalse(stm.IsCompleted);
     }
 
-    private static States NewStates() => new(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+    private static States NewStates() => new(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
 
     private static int StoredFailures(States states)
         => States.DeserializeToDictionary(states.GetBytes()).Values.OfType<FatalWorkflowException>().Count();
 
     private static States Restart(States states)
-        => States.Deserialize(states.GetBytes(), new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        => States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
 
     private static Context CreateContext(
         States states,

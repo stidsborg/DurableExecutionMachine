@@ -208,7 +208,7 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
     public static Dictionary<ExecutionScopeId, object?> DeserializeToDictionary(byte[] bytes)
     {
         using var timeoutsManager = new TimeoutsManager();
-        var states = Deserialize(bytes, new SuspensionBarrier(), (_, _) => Task.CompletedTask, timeoutsManager);
+        var states = Deserialize(bytes, new SuspensionBarrier(timeoutsManager), (_, _) => Task.CompletedTask, timeoutsManager);
         return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value.Value));
     }
 
