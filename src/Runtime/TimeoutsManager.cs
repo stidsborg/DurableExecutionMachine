@@ -35,12 +35,10 @@ internal class TimeoutsManager : IDisposable
                 return;
             
             expired = new List<RegisteredTimeout>();
-            foreach (var (id, registeredTimeout) in _timeouts.ToList())
+            foreach (var registeredTimeout in _timeouts.Values)
                 if (registeredTimeout.Timeout <= now)
-                {
+                    // the waiter removes its timeout once it is running again
                     expired.Add(registeredTimeout);
-                    _timeouts.Remove(id);
-                }
 
             if (MinimumTimeout is { } nextTimeout)
                 ScheduleWakeUp(nextTimeout);
