@@ -14,7 +14,7 @@ internal sealed class SyncBarrier
     // completed while a sync is requested that no started sync covers
     private TaskCompletionSource _requested = NewTcs();
 
-    // a sync already in progress may have snapshotted the state before this call, so wait for the next one
+    // requests a sync and waits for it, see NextSync
     public Task Sync()
     {
         lock (_lock)
@@ -23,6 +23,10 @@ internal sealed class SyncBarrier
             return _nextSync.Wait();
         }
     }
+
+    // waits for the next sync without requesting one.
+    // a sync already in progress may have snapshotted the state before this call, so wait for the next one
+    public Task NextSync() => _nextSync.Wait();
 
     // completes when a sync is requested, or at once if one already is
     public Task SyncRequested()

@@ -66,7 +66,7 @@ public class WhenAnyTests
             _ => Task.FromResult("fast")
         ]).WaitAsync(TimeSpan.FromSeconds(5));
         var later = ctx.Message<string>();
-        _ = messages.Deliver("hello", idempotencyKey: null, timeout: null);
+        _ = messages.Deliver("hello", idempotencyKey: null);
 
         Assert.AreEqual("fast", winner);
         Assert.AreEqual("hello", await later.WaitAsync(TimeSpan.FromSeconds(5)));

@@ -10,9 +10,6 @@ namespace DurableExecutionMachine.Samples.Scenarios.CaptureGuidAndWaitForMessage
 /// </summary>
 public static class Setup
 {
-    // a delivery completes once it has been flushed, so flush it if nothing else does within this time
-    private static readonly TimeSpan FlushWithin = TimeSpan.FromMilliseconds(100);
-
     // relative to the current working directory
     private static readonly string FilePath = "./capture-guid-and-wait-for-messages.state";
 
@@ -31,9 +28,9 @@ public static class Setup
             stm.Resume(new Flow());
 
             Console.WriteLine("Delivering 'hi'");
-            await stm.DeliverMessage("hi", timeout: FlushWithin);
+            _ = stm.DeliverMessage("hi");
             Console.WriteLine("Delivering 'hey'");
-            await stm.DeliverMessage("hey", timeout: FlushWithin);
+            _ = stm.DeliverMessage("hey");
 
             Console.WriteLine($"Result: {stm.Completion()}");
 
@@ -46,8 +43,9 @@ public static class Setup
             var stm = factory.New();
             stm.Start(new Flow(), param: 3);
 
+            // the deliveries are not awaited: they complete at the next flush, and the state is stored below instead
             Console.WriteLine("Delivering 'hello'");
-            await stm.DeliverMessage("hello", timeout: FlushWithin);
+            _ = stm.DeliverMessage("hello");
 
             Console.WriteLine("Suspending and storing the state");
             await stm.Suspend();

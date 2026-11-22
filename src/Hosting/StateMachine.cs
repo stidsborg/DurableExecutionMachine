@@ -79,19 +79,19 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         _flowTask = RunFlow(flow, param);
     }
     
-    public Task DeliverMessage(object message, string? idempotencyKey = null, TimeSpan? timeout = null)
-        => Context.Messages.Deliver(message, idempotencyKey, timeout);
-
     /// <summary>
-    /// Delivers the message like <see cref="DeliverMessage"/>, but without waiting for a flush, so the host must persist the state.
-    /// When it returns, the message is part of the machine's state, so every later flush and <see cref="Serialize"/> contains it.
+    /// When it returns, the message is part of the machine's state, so every later flush and <see cref="Serialize"/> contains it,
+    /// either in the inbox or at the wait it was handed to.
+    /// The returned task completes when a flush that started after this call completes, so the caller may then release what the message
+    /// depends on (e.g. ack it). The delivery does not request a flush: the caller may ignore the task and persist the state itself.
     /// It also delivers to a suspended machine: a waiting flow receives the message, but only continues when the machine is resumed.
-    /// A message with an idempotency key that was already delivered is ignored.
+    /// A message with an idempotency key that was already delivered is ignored, but its task still waits for the next flush,
+    /// as the original delivery might not have been flushed yet.
     /// </summary>
-    public void DeliverMessageWithoutFlush(object message, string? idempotencyKey = null)
+    public Task DeliverMessage(object message, string? idempotencyKey = null)
     {
         ArgumentNullException.ThrowIfNull(message);
-        Context.Messages.DeliverWithoutFlush(message, idempotencyKey);
+        return Context.Messages.Deliver(message, idempotencyKey);
     }
 
     public SerializedStateMachine Serialize() => _states.Serialize();

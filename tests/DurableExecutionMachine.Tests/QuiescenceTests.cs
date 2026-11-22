@@ -31,7 +31,7 @@ public class QuiescenceTests
         stm.Start(gates, "param");
         await stm.Quiescence().WaitAsync(TimeSpan.FromSeconds(5));
 
-        stm.DeliverMessageWithoutFlush("hello");
+        _ = stm.DeliverMessage("hello");
         await gates.InCapture.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var quiescence = stm.Quiescence();

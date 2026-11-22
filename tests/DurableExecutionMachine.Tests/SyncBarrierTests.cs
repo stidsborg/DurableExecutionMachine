@@ -70,4 +70,17 @@ public class SyncBarrierTests
 
         Assert.IsTrue(barrier.SyncRequested().IsCompleted, "the in-progress sync does not cover the request");
     }
+
+    [TestMethod]
+    public void NextSync_DoesNotRequestASync_AndCompletesWhenNextSyncCompletes()
+    {
+        var barrier = new SyncBarrier();
+
+        var sync = barrier.NextSync();
+        Assert.IsFalse(barrier.SyncRequested().IsCompleted);
+
+        barrier.SyncStarted();
+        barrier.SyncCompleted();
+        Assert.IsTrue(sync.Wait(TimeSpan.FromSeconds(5)));
+    }
 }
