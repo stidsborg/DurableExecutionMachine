@@ -13,12 +13,12 @@ public class MessagesTests
     [TestMethod]
     public async Task Deliver_IgnoresDuplicateIdempotencyKey_AfterRestart()
     {
-        var firstStates = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var firstRun = new Messages(firstStates, new TimeoutsManager(), Now);
         firstRun.Initialize();
         _ = firstRun.Deliver("hello", idempotencyKey: "key");
 
-        var restartedStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var restartedStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var restarted = new Messages(restartedStates, new TimeoutsManager(), Now);
         restarted.Initialize();
         var duplicate = restarted.Deliver("hello", idempotencyKey: "key");
@@ -37,7 +37,7 @@ public class MessagesTests
     [TestMethod]
     public async Task Deliver_DuplicateIdempotencyKey_CompletesOnlyAfterNextFlush()
     {
-        var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
         var original = messages.Deliver("hello", idempotencyKey: "key");
@@ -55,7 +55,7 @@ public class MessagesTests
     public void Deliver_StoresIdempotencyKeyCreationTime_FromUtcNow()
     {
         var createdAt = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
-        var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), utcNow: () => createdAt);
         messages.Initialize();
         _ = messages.Deliver("hello", idempotencyKey: "key");
@@ -69,7 +69,7 @@ public class MessagesTests
     [TestMethod]
     public async Task Deliver_SkipsMessage_WhenFilterThrows()
     {
-        var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
         var messageId = new ExecutionScopeId("0");
@@ -96,13 +96,13 @@ public class MessagesTests
     public void Deliver_StoresMessage_WithoutFlushing()
     {
         var flushes = 0;
-        var states = new States(new SuspensionBarrier(), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
 
         var flushed = messages.Deliver("hello", idempotencyKey: null);
 
-        var restartedStates = States.Deserialize(states.GetBytes(), new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var restartedStates = States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var inbox = States
             .DeserializeToDictionary(restartedStates.GetBytes())
             .Where(kv => kv.Key.Id.StartsWith("-1.0."))
@@ -116,7 +116,7 @@ public class MessagesTests
     [TestMethod]
     public void Deliver_IgnoresDuplicateIdempotencyKey()
     {
-        var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
 
@@ -133,7 +133,7 @@ public class MessagesTests
     [TestMethod]
     public async Task Deliver_WhileSuspended_IsReceivedByLaterWait()
     {
-        var suspensionBarrier = new SuspensionBarrier();
+        var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var states = new States(suspensionBarrier, NoSync, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
@@ -200,7 +200,7 @@ public class MessagesTests
     {
         for (var i = 0; i < 1_000; i++)
         {
-            var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+            var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
             var messages = new Messages(states, new TimeoutsManager(), Now);
             messages.Initialize();
             _ = messages.Deliver("hello", idempotencyKey: null);
@@ -221,7 +221,7 @@ public class MessagesTests
         for (var i = 0; i < 1_000; i++)
         {
             var timeoutsManager = new TimeoutsManager();
-            var states = new States(new SuspensionBarrier(), NoSync, new TimeoutsManager());
+            var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
             var messages = new Messages(states, timeoutsManager, Now);
             messages.Initialize();
             var messageId = new ExecutionScopeId("0");

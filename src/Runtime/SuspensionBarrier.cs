@@ -1,7 +1,7 @@
 namespace DurableExecutionMachine.Runtime;
 
 // counts the subflows that are running. a suspension is complete when none are running
-internal class SuspensionBarrier
+internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
 {
     private readonly Lock _lock = new();
 
@@ -18,7 +18,7 @@ internal class SuspensionBarrier
             Running++;
     }
 
-    public async Task EnterWhenReleased()
+    public async Task EnterWhenReleased(ExecutionScopeId? timeoutId = null)
     {
         while (true)
         {
@@ -28,6 +28,9 @@ internal class SuspensionBarrier
                 if (_released == null)
                 {
                     Running++;
+                    // removed together with counting the subflow as running, so a fired timeout counts until then
+                    if (timeoutId != null)
+                        timeoutsManager.CancelTimeout(timeoutId);
                     return;
                 }
 
@@ -85,6 +88,33 @@ internal class SuspensionBarrier
         finally
         {
             await EnterWhenReleased();
+        }
+    }
+
+    // as SuspendedWhile, and the caller's timeout is removed when the caller is running again
+    public async Task SuspendedWhile(Task task, ExecutionScopeId timeoutId)
+    {
+        Leave();
+        try
+        {
+            await task;
+        }
+        finally
+        {
+            await EnterWhenReleased(timeoutId);
+        }
+    }
+
+    public async Task<T> SuspendedWhile<T>(Task<T> task, ExecutionScopeId timeoutId)
+    {
+        Leave();
+        try
+        {
+            return await task;
+        }
+        finally
+        {
+            await EnterWhenReleased(timeoutId);
         }
     }
 
