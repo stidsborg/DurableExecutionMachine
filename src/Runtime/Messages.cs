@@ -110,7 +110,10 @@ internal class Messages
             }
         });
 
-        return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
+        var result = await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
+        // a fired timeout stays registered until its waiter runs again
+        _timeoutsManager.CancelTimeout(timeoutId);
+        return result;
     }
 
     private void TryToDeliver()

@@ -94,6 +94,8 @@ public class Context
         });
 
         await _suspensionBarrier.SuspendedWhile(expired.Task);
+        // a fired timeout stays registered until its waiter runs again
+        _timeoutsManager.CancelTimeout(timeoutId);
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)
