@@ -200,9 +200,7 @@ public class MessagesTests
     {
         for (var i = 0; i < 1_000; i++)
         {
-            var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
-            var messages = new Messages(states, new TimeoutsManager(), Now);
-            messages.Initialize();
+            var (_, _, states, messages) = NewMessages();
             _ = messages.Deliver("hello", idempotencyKey: null);
 
             var messageId = new ExecutionScopeId("0");
@@ -220,10 +218,7 @@ public class MessagesTests
     {
         for (var i = 0; i < 1_000; i++)
         {
-            var timeoutsManager = new TimeoutsManager();
-            var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
-            var messages = new Messages(states, timeoutsManager, Now);
-            messages.Initialize();
+            var (timeoutsManager, _, _, messages) = NewMessages();
             var messageId = new ExecutionScopeId("0");
 
             var subscription = Task.Run(() => messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: DateTime.UtcNow.AddHours(1)));
@@ -232,5 +227,47 @@ public class MessagesTests
             Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.IsNull(timeoutsManager.MinimumTimeout);
         }
+    }
+
+    [TestMethod]
+    public async Task Subscribe_ReturnsNull_AndStoresNull_WhenTimeoutFires()
+    {
+        var (timeoutsManager, _, states, messages) = NewMessages();
+        var messageId = new ExecutionScopeId("0");
+
+        var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: DateTime.UtcNow.AddMinutes(-1));
+
+        Assert.IsNull(await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsNull(timeoutsManager.MinimumTimeout);
+        var stored = States.DeserializeToDictionary(states.GetBytes());
+        Assert.IsTrue(stored.ContainsKey(messageId));
+        Assert.IsNull(stored[messageId]);
+    }
+
+    [TestMethod]
+    public async Task Subscribe_ReceivesMessage_DeliveredAfterTimeoutFired_BeforeTheWaitRunsAgain()
+    {
+        var (timeoutsManager, suspensionBarrier, states, messages) = NewMessages();
+        var messageId = new ExecutionScopeId("0");
+        suspensionBarrier.RequestSuspension();
+
+        var subscription = messages.Subscribe(filter: _ => true, messageId, timeoutId: messageId.CreateChild(0), timeout: DateTime.UtcNow.AddMinutes(-1));
+        timeoutsManager.NotifyExpiredTimeouts();
+        _ = messages.Deliver("hello", idempotencyKey: null);
+        suspensionBarrier.Release();
+
+        Assert.AreEqual("hello", await subscription.WaitAsync(TimeSpan.FromSeconds(5)));
+        var stored = States.DeserializeToDictionary(states.GetBytes());
+        Assert.AreEqual("hello", stored[messageId]);
+    }
+
+    private static (TimeoutsManager, SuspensionBarrier, States, Messages) NewMessages()
+    {
+        var timeoutsManager = new TimeoutsManager();
+        var suspensionBarrier = new SuspensionBarrier(timeoutsManager);
+        var states = new States(suspensionBarrier, NoSync, timeoutsManager);
+        var messages = new Messages(states, timeoutsManager, Now);
+        messages.Initialize();
+        return (timeoutsManager, suspensionBarrier, states, messages);
     }
 }

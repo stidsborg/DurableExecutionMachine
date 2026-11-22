@@ -6,25 +6,38 @@ namespace DurableExecutionMachine.Tests;
 public class SuspensionBarrierTests
 {
     [TestMethod]
-    public async Task Timeout_IsPartOfMinimumTimeout_UntilTheSubflowRunsAgain()
+    public async Task SuspendedUntil_FiredTimeout_IsPartOfMinimumTimeout_UntilTheSubflowRunsAgain()
     {
         using var timeoutsManager = new TimeoutsManager();
         var barrier = new SuspensionBarrier(timeoutsManager);
         barrier.Enter();
-        var timeoutId = new ExecutionScopeId("0");
-        var timeout = DateTime.UtcNow.AddMinutes(1);
-        var woken = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        timeoutsManager.RegisterTimeout(timeoutId, timeout, () => woken.TrySetResult());
-
-        var wait = barrier.SuspendedWhile(woken.Task, timeoutId);
-        Assert.AreEqual(timeout, timeoutsManager.MinimumTimeout);
+        var timeout = DateTime.UtcNow;
 
         barrier.RequestSuspension();
-        woken.SetResult();
-        Assert.AreEqual(timeout, timeoutsManager.MinimumTimeout, "the subflow is woken, but held by the suspension");
+        var wait = barrier.SuspendedUntil(new TaskCompletionSource().Task, new ExecutionScopeId("0"), timeout);
+        timeoutsManager.NotifyExpiredTimeouts();
+
+        Assert.IsFalse(wait.IsCompleted, "the timeout fired, but the subflow is held by the suspension");
+        Assert.AreEqual(timeout, timeoutsManager.MinimumTimeout);
 
         barrier.Release();
-        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsTrue(await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsNull(timeoutsManager.MinimumTimeout);
+        Assert.AreEqual(1, barrier.Running);
+    }
+
+    [TestMethod]
+    public async Task SuspendedUntil_ReturnsFalse_AndRemovesTheTimeout_WhenTheTaskCompletesFirst()
+    {
+        using var timeoutsManager = new TimeoutsManager();
+        var barrier = new SuspensionBarrier(timeoutsManager);
+        barrier.Enter();
+        var completed = new TaskCompletionSource();
+
+        var wait = barrier.SuspendedUntil(completed.Task, new ExecutionScopeId("0"), DateTime.UtcNow.AddHours(1));
+        completed.SetResult();
+
+        Assert.IsFalse(await wait.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.IsNull(timeoutsManager.MinimumTimeout);
         Assert.AreEqual(1, barrier.Running);
     }

@@ -55,8 +55,7 @@ public class CaptureReplayTests
 
     private static Context CreateContext(States states)
     {
-        var timeoutsManager = new TimeoutsManager();
-        var ctx = new Context(new ExecutionScope(), states, messages: null!, new SuspensionBarrier(new TimeoutsManager()), timeoutsManager, utcNow: () => DateTime.UtcNow);
+        var ctx = new Context(new ExecutionScope(), states, messages: null!, new SuspensionBarrier(new TimeoutsManager()), utcNow: () => DateTime.UtcNow);
         ctx.Scope.SetRoot();
         return ctx;
     }

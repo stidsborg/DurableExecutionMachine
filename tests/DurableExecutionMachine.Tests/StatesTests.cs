@@ -35,10 +35,10 @@ public class StatesTests
     [TestMethod]
     public async Task DeserializeToDictionary_ReturnsCapturedValues()
     {
-        var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var timeoutsManager = new TimeoutsManager();
+        var suspensionBarrier = new SuspensionBarrier(timeoutsManager);
         var states = new States(suspensionBarrier, NoSync, timeoutsManager);
-        var ctx = new Context(new ExecutionScope(), states, messages: null!, suspensionBarrier, timeoutsManager, utcNow: () => DateTime.UtcNow);
+        var ctx = new Context(new ExecutionScope(), states, messages: null!, suspensionBarrier, utcNow: () => DateTime.UtcNow);
         ctx.Scope.SetRoot();
 
         await ctx.Capture(() => Task.FromResult("hello"));

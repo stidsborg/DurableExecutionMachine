@@ -44,14 +44,17 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
     public void Leave()
     {
         lock (_lock)
+            LeaveWhileLocked();
+    }
+
+    private void LeaveWhileLocked()
+    {
+        Running--;
+        if (Running == 0)
         {
-            Running--;
-            if (Running == 0)
-            {
-                // reset, so a later wait waits for the next time no subflow is running
-                _allSuspended?.TrySetResult();
-                _allSuspended = null;
-            }
+            // reset, so a later wait waits for the next time no subflow is running
+            _allSuspended?.TrySetResult();
+            _allSuspended = null;
         }
     }
 
@@ -91,26 +94,25 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
         }
     }
 
-    // as SuspendedWhile, and the caller's timeout is removed when the caller is running again
-    public async Task SuspendedWhile(Task task, ExecutionScopeId timeoutId)
+    // as SuspendedWhile, but also completes when the timeout fires. returns true if the timeout fired before the task completed.
+    // the timeout is registered when the caller counts as suspended and removed when it is running again
+    public async Task<bool> SuspendedUntil(Task task, ExecutionScopeId timeoutId, DateTime timeout)
     {
-        Leave();
-        try
+        var timedOut = NewTcs();
+        lock (_lock)
         {
-            await task;
+            timeoutsManager.RegisterTimeout(timeoutId, timeout, () => timedOut.TrySetResult());
+            LeaveWhileLocked();
         }
-        finally
-        {
-            await EnterWhenReleased(timeoutId);
-        }
-    }
 
-    public async Task<T> SuspendedWhile<T>(Task<T> task, ExecutionScopeId timeoutId)
-    {
-        Leave();
         try
         {
-            return await task;
+            // the task wins if both have completed
+            var first = await Task.WhenAny(task, timedOut.Task);
+            if (first == task)
+                await task; // rethrows if the task failed or was cancelled
+
+            return first != task;
         }
         finally
         {

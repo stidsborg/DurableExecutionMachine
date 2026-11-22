@@ -8,19 +8,17 @@ public class Context
     private readonly States _states;
     private readonly Messages _messages;
     private readonly SuspensionBarrier _suspensionBarrier;
-    private readonly TimeoutsManager _timeoutsManager;
     private readonly UtcNow _utcNow;
     
     internal ExecutionScope Scope { get; }
     internal Messages Messages => _messages;
     
-    internal Context(ExecutionScope scope, States states, Messages messages, SuspensionBarrier suspensionBarrier, TimeoutsManager timeoutsManager, UtcNow utcNow)
+    internal Context(ExecutionScope scope, States states, Messages messages, SuspensionBarrier suspensionBarrier, UtcNow utcNow)
     {
         _states = states;
         Scope = scope;
         _messages = messages;
         _suspensionBarrier = suspensionBarrier;
-        _timeoutsManager = timeoutsManager;
         _utcNow = utcNow;
     }
 
@@ -85,15 +83,9 @@ public class Context
             _states.SetState(timeoutId, timeoutAt, typeof(DateTime), removeDescendants: false);           
         }
 
-        var expired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt, () => expired.TrySetResult());
-        await using var cancellation = cancellationToken.Register(() =>
-        {
-            _timeoutsManager.CancelTimeout(timeoutId);
-            expired.TrySetCanceled(cancellationToken);
-        });
-
-        await _suspensionBarrier.SuspendedWhile(expired.Task, timeoutId);
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var cancellation = cancellationToken.Register(() => cancelled.TrySetCanceled(cancellationToken));
+        await _suspensionBarrier.SuspendedUntil(cancelled.Task, timeoutId, timeoutAt);
     }
     
     private async Task<T> Parallel<T>(Func<Task<T>> subTask, bool flush = true)

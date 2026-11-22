@@ -32,8 +32,8 @@ public class WhenAnyTests
     public async Task WhenAny_CancelsLosingDelay_AndRemovesItsTimeout()
     {
         var timeoutsManager = new TimeoutsManager();
-        var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
-        var ctx = CreateContext(NewStates(), suspensionBarrier, timeoutsManager);
+        var suspensionBarrier = new SuspensionBarrier(timeoutsManager);
+        var ctx = CreateContext(NewStates(), suspensionBarrier);
         var loserCancelled = false;
 
         var winner = await ctx.WhenAny([
@@ -59,7 +59,7 @@ public class WhenAnyTests
         var timeoutsManager = new TimeoutsManager();
         var messages = new Messages(states, timeoutsManager, () => DateTime.UtcNow);
         messages.Initialize();
-        var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()), timeoutsManager, messages);
+        var ctx = CreateContext(states, new SuspensionBarrier(timeoutsManager), messages);
 
         var winner = await ctx.WhenAny([
             async _ => await ctx.Message<string>(),
@@ -76,7 +76,7 @@ public class WhenAnyTests
     public async Task WhenAny_CancelsNestedWhenAny_InLosingBranch()
     {
         var timeoutsManager = new TimeoutsManager();
-        var ctx = CreateContext(NewStates(), new SuspensionBarrier(new TimeoutsManager()), timeoutsManager);
+        var ctx = CreateContext(NewStates(), new SuspensionBarrier(timeoutsManager));
         var innerToken = CancellationToken.None;
 
         var winner = await ctx.WhenAny([
@@ -316,10 +316,9 @@ public class WhenAnyTests
     private static Context CreateContext(
         States states,
         SuspensionBarrier suspensionBarrier,
-        TimeoutsManager? timeoutsManager = null,
         Messages? messages = null)
     {
-        var ctx = new Context(new ExecutionScope(), states, messages!, suspensionBarrier, timeoutsManager ?? new TimeoutsManager(), utcNow: () => DateTime.UtcNow);
+        var ctx = new Context(new ExecutionScope(), states, messages!, suspensionBarrier, utcNow: () => DateTime.UtcNow);
         ctx.Scope.SetRoot();
         return ctx;
     }
