@@ -33,7 +33,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     {
         var messages = new Messages(states, timeoutsManager, utcNow);
         messages.Initialize();
-        return new Context(new ExecutionScope(), states, messages, suspensionBarrier, timeoutsManager, utcNow);
+        return new Context(new ExecutionScope(), states, messages, suspensionBarrier, utcNow);
     }
     
     //can this work with multiple threads?

@@ -169,8 +169,7 @@ public class WhenAllTests
 
     private static Context CreateContext(States states, SuspensionBarrier suspensionBarrier)
     {
-        var timeoutsManager = new TimeoutsManager();
-        var ctx = new Context(new ExecutionScope(), states, messages: null!, suspensionBarrier, timeoutsManager, utcNow: () => DateTime.UtcNow);
+        var ctx = new Context(new ExecutionScope(), states, messages: null!, suspensionBarrier, utcNow: () => DateTime.UtcNow);
         ctx.Scope.SetRoot();
         return ctx;
     }

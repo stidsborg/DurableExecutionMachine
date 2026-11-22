@@ -81,22 +81,6 @@ internal class Messages
         // deliver before counting as suspended so the subscription's writes to states happen before a sync can observe all subflows suspended
         TryToDeliver();
         
-        if (!tcs.Task.IsCompleted && timeoutAt is not null)
-            lock (_lock)
-                if (!tcs.Task.IsCompleted)
-                    _timeoutsManager.RegisterTimeout(timeoutId, timeoutAt.Value, () =>
-                    {
-                        lock (_lock)
-                        {
-                            // the subscription is removed when a message is delivered to it
-                            if (!_subscriptions.Remove(messageId))
-                                return;
-
-                            _states.SetNull(messageId, removeDescendants: false);
-                            tcs.SetResult(null);
-                        }
-                    });
-        
         await using var cancellation = cancellationToken.Register(() =>
         {
             lock (_lock)
@@ -110,7 +94,22 @@ internal class Messages
             }
         });
 
-        return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task, timeoutId);
+        if (timeoutAt is null)
+            return await _states.SuspensionBarrier.SuspendedWhile(tcs.Task);
+
+        if (!await _states.SuspensionBarrier.SuspendedUntil(tcs.Task, timeoutId, timeoutAt.Value))
+            return await tcs.Task;
+
+        lock (_lock)
+        {
+            // the subscription is removed by whoever resolves the wait first: a delivery, a cancellation or this timeout.
+            // a message delivered after the timeout fired, but before this subflow ran again, wins
+            if (!_subscriptions.Remove(messageId))
+                return tcs.Task.GetAwaiter().GetResult();
+
+            _states.SetNull(messageId, removeDescendants: false);
+            return null;
+        }
     }
 
     private void TryToDeliver()
