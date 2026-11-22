@@ -220,6 +220,8 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
 
     public Task WaitForNextFlush() => _syncBarrier.Sync();
 
+    public Task FlushRequested() => _syncBarrier.SyncRequested();
+
     // flushes never overlap, as the sync barrier requires.
     // after a failed flush every later flush fails too, so states written since (such as a capture failed by the flush) are never persisted,
     // and anyone waiting for a flush keeps waiting

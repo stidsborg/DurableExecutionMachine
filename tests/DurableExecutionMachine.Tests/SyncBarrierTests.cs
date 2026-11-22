@@ -45,4 +45,29 @@ public class SyncBarrierTests
 
         Assert.IsFalse(sync.Wait(TimeSpan.FromMilliseconds(100)));
     }
+
+    [TestMethod]
+    public void SyncRequested_CompletesWhenSyncIsCalled_AndStaysCompletedUntilASyncStarts()
+    {
+        var barrier = new SyncBarrier();
+        Assert.IsFalse(barrier.SyncRequested().IsCompleted);
+
+        _ = barrier.Sync();
+        Assert.IsTrue(barrier.SyncRequested().IsCompleted);
+
+        barrier.SyncStarted();
+        Assert.IsFalse(barrier.SyncRequested().IsCompleted);
+    }
+
+    [TestMethod]
+    public void SyncRequested_DuringInProgressSync_StaysRequested()
+    {
+        var barrier = new SyncBarrier();
+
+        barrier.SyncStarted();
+        _ = barrier.Sync();
+        barrier.SyncCompleted();
+
+        Assert.IsTrue(barrier.SyncRequested().IsCompleted, "the in-progress sync does not cover the request");
+    }
 }
