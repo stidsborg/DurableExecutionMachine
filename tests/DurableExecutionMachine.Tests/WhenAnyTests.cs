@@ -241,7 +241,7 @@ public class WhenAnyTests
     }
 
     [TestMethod]
-    public async Task WhenAny_CancelledCaptureInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
+    public async Task WhenAny_CancelledCaptureInLosingBranch_ThrowsOperationCanceledException_AndStoresIt()
     {
         var states = NewStates();
         var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
@@ -260,11 +260,11 @@ public class WhenAnyTests
 
         Assert.AreEqual(2, winner);
         Assert.IsInstanceOfType<OperationCanceledException>(caught);
-        Assert.AreEqual(0, storedFailures);
+        Assert.AreEqual(1, storedFailures);
     }
 
     [TestMethod]
-    public async Task WhenAny_NestedWhenAnyInLosingBranch_ThrowsOperationCanceledException_WithoutStoringIt()
+    public async Task WhenAny_NestedWhenAnyInLosingBranch_ThrowsOperationCanceledException_AndStoresIt()
     {
         var states = NewStates();
         var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
@@ -283,7 +283,7 @@ public class WhenAnyTests
 
         Assert.AreEqual(2, winner);
         Assert.IsInstanceOfType<OperationCanceledException>(caught);
-        Assert.AreEqual(0, storedFailures);
+        Assert.AreEqual(1, storedFailures);
     }
 
     [TestMethod]
