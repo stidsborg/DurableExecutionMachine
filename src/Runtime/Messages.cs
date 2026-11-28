@@ -90,7 +90,8 @@ internal class Messages
                     return;
 
                 _timeoutsManager.CancelTimeout(timeoutId);
-                tcs.SetCanceled(cancellationToken);
+                // failed rather than cancelled, so awaiting it throws an OperationCanceledException and not its subtype TaskCanceledException
+                tcs.SetException(new OperationCanceledException(cancellationToken));
             }
         });
 

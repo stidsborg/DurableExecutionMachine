@@ -57,7 +57,7 @@ public class Context
                 // a cancellation is stored like any other failure, but thrown as the cancellation it is (see ToThrown)
                 var workflowException = FatalWorkflowException.CreateNonGeneric(e);
                 _states.SetException(id, workflowException, removeDescendants: true);
-                if (e is OperationCanceledException)
+                if (e.GetType() == typeof(OperationCanceledException))
                     throw;
                 throw workflowException;
             }
@@ -82,7 +82,8 @@ public class Context
         }
 
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var cancellation = cancellationToken.Register(() => cancelled.TrySetCanceled(cancellationToken));
+        // failed rather than cancelled, so awaiting it throws an OperationCanceledException and not its subtype TaskCanceledException
+        await using var cancellation = cancellationToken.Register(() => cancelled.TrySetException(new OperationCanceledException(cancellationToken)));
         await _suspensionBarrier.SuspendedUntil(cancelled.Task, timeoutId, timeoutAt);
     }
     

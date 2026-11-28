@@ -43,10 +43,11 @@ public abstract class FatalWorkflowException : Exception
                ?? throw new InvalidOperationException("Unable to create FatalWorkflowException from Exception: " + exception);
     }
 
-    // what a capture throws for this stored failure on replay. a stored cancellation is thrown as an OperationCanceledException,
-    // so catch (OperationCanceledException) catches it in every run. its token and stack trace are lost
+    // what a capture throws for this stored failure on replay. a stored OperationCanceledException is thrown as one,
+    // so catch (OperationCanceledException) catches it in every run. its token and stack trace are lost.
+    // a subtype, such as TaskCanceledException, is thrown as a FatalWorkflowException like any other failure
     internal Exception ToThrown()
-        => typeof(OperationCanceledException).IsAssignableFrom(ErrorType)
+        => ErrorType == typeof(OperationCanceledException)
             ? new OperationCanceledException(FlowErrorMessage)
             : this;
 
