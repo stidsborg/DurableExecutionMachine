@@ -11,6 +11,16 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
 
     public int Running { get; private set; }
 
+    // true when no subflow is running, i.e. when WaitForAllSuspended would complete at once
+    public bool AllSuspended
+    {
+        get
+        {
+            lock (_lock)
+                return Running == 0;
+        }
+    }
+
     // the caller is already running, so a suspension cannot complete before the new subflow is counted
     public void Enter()
     {
