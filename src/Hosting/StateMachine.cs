@@ -39,6 +39,21 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     //can this work with multiple threads?
     public bool IsCompleted => _flowTask.IsCompleted;
     public TResult Completion() => _flowTask.Result;
+
+    /// <summary>
+    /// <see cref="StateMachineStatus.Completed"/> once the flow has returned or thrown, otherwise <see cref="StateMachineStatus.Quiescent"/>
+    /// when no subflow is running (see <see cref="Quiescence"/>), otherwise <see cref="StateMachineStatus.Running"/>.
+    /// </summary>
+    public StateMachineStatus Status
+    {
+        get
+        {
+            if (_flowTask is { IsCompleted: true })
+                return StateMachineStatus.Completed;
+
+            return _suspensionBarrier.AllSuspended ? StateMachineStatus.Quiescent : StateMachineStatus.Running;
+        }
+    }
     
     public void Start(TFlow flow, TParam param)
     {
