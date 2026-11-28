@@ -40,8 +40,9 @@ public class NextQuiescenceOrSyncTests
 
         gates.ReleaseCapture.SetResult();
         var result = await next.WaitAsync(TimeSpan.FromSeconds(5));
-        // the message wait leaves the barrier before it receives the delivered message, which completes next,
-        // so the status may already have moved on when it is read
+        // the message is already delivered, so the message wait doesn't leave the barrier: the wait completes when the flow returns,
+        // which is read as Completed, or as Quiescent just before the flow's task completes
+        Assert.AreNotEqual(StateMachineStatus.Running, result.Status);
         Assert.IsFalse(result.IsSyncRequested);
     }
 

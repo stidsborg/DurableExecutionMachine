@@ -74,12 +74,21 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
             if (_released == null)
                 return;
 
-        await SuspendedWhile(Task.CompletedTask);
+        Leave();
+        await EnterWhenReleased();
     }
 
-    // the caller counts as suspended while it waits, so a suspension can complete in the meantime
+    // the caller counts as suspended while it waits, so a suspension can complete in the meantime.
+    // a task that has already completed is no wait: the caller stays running, unless a suspension is requested
     public async Task SuspendedWhile(Task task)
     {
+        if (task.IsCompleted)
+        {
+            await SuspendIfNeeded();
+            await task; // rethrows if the task failed or was cancelled
+            return;
+        }
+
         Leave();
         try
         {
@@ -93,6 +102,12 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
 
     public async Task<T> SuspendedWhile<T>(Task<T> task)
     {
+        if (task.IsCompleted)
+        {
+            await SuspendIfNeeded();
+            return await task;
+        }
+
         Leave();
         try
         {
@@ -105,9 +120,17 @@ internal class SuspensionBarrier(TimeoutsManager timeoutsManager)
     }
 
     // as SuspendedWhile, but also completes when the timeout fires. returns true if the timeout fired before the task completed.
-    // the timeout is registered when the caller counts as suspended and removed when it is running again
+    // the timeout is registered when the caller counts as suspended and removed when it is running again.
+    // as for SuspendedWhile, a task that has already completed is no wait, and its timeout is never registered
     public async Task<bool> SuspendedUntil(Task task, ExecutionScopeId timeoutId, DateTime timeout)
     {
+        if (task.IsCompleted)
+        {
+            await SuspendIfNeeded();
+            await task;
+            return false;
+        }
+
         var timedOut = NewTcs();
         lock (_lock)
         {
