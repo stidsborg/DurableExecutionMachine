@@ -3,7 +3,7 @@ using DurableExecutionMachine.Hosting;
 namespace DurableExecutionMachine.Samples.Scenarios.CaptureGuidAndWaitForMessages;
 
 /// <summary>
-/// Spans two runs of the process. The first run starts the flow, delivers the first greeting, suspends, stores the state and exits while
+/// Spans two runs of the process. The first run starts the flow, delivers the first greeting, stores the state and exits while
 /// the flow is still waiting. The second run restores the machine from the file: on replay the guid and the first
 /// greeting are read back from state instead of being produced again, and the flow completes once the remaining
 /// greetings are delivered. The file is then deleted, so the run after that starts over.
@@ -17,8 +17,7 @@ public static class Setup
     {
         var store = new FileStore(FilePath);
         var factory = new StateMachineFactory<Flow, int, string>(
-            startFlow: (flow, greetingsToWaitFor, ctx) => flow.Run(greetingsToWaitFor, ctx),
-            syncCallback: store.Save
+            startFlow: (flow, greetingsToWaitFor, ctx) => flow.Run(greetingsToWaitFor, ctx)
         );
 
         if (store.Bytes is { } bytes)
@@ -43,17 +42,38 @@ public static class Setup
             var stm = factory.New();
             stm.Start(new Flow(), param: 3);
 
-            // the deliveries are not awaited: they complete at the next flush, and the state is stored below instead
             Console.WriteLine("Delivering 'hello'");
-            _ = stm.DeliverMessage("hello");
+            var delivered = stm.DeliverMessage("hello");
 
-            Console.WriteLine("Suspending and storing the state");
-            await stm.Suspend();
-            var (states, minimumTimeout) = stm.Serialize();
-            await store.Save(states, minimumTimeout);
-            stm.ResumeAfterSuspend();
+            Console.WriteLine("Storing the state each time the flow asks for it, until the flow waits");
+            await SyncUntilQuiescent(stm, store);
+
+            // the delivery does not request a sync, so a last one stores 'hello' and completes the delivery
+            Console.WriteLine("Storing the delivered message");
+            await Sync(stm, store);
+            await delivered;
 
             Console.WriteLine($"Stored state in {FilePath} - run the scenario again to resume the execution");
         }
+    }
+
+    // the host's side of the machine: syncs whenever the flow asks for it, and returns once no subflow is running
+    private static async Task SyncUntilQuiescent(StateMachine<Flow, int, string> stm, FileStore store)
+    {
+        while (true)
+        {
+            var (status, syncRequested) = await stm.NextQuiescenceOrSync();
+            if (syncRequested)
+                await Sync(stm, store);
+            else if (status != StateMachineStatus.Running)
+                return;
+        }
+    }
+
+    private static async Task Sync(StateMachine<Flow, int, string> stm, FileStore store)
+    {
+        var (states, minimumTimeout) = stm.StartSync();
+        await store.Save(states, minimumTimeout);
+        stm.CompleteSync();
     }
 }

@@ -1,12 +1,12 @@
 using DurableExecutionMachine.Hosting;
+using DurableExecutionMachine.Runtime;
+using DurableExecutionMachine.Storage;
 
 namespace DurableExecutionMachine.Tests;
 
 [TestClass]
 public class NextQuiescenceOrSyncTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public async Task NextQuiescenceOrSync_CompletesWhenFlowWaitsForMessage()
     {
@@ -46,6 +46,36 @@ public class NextQuiescenceOrSyncTests
         Assert.IsFalse(result.IsSyncRequested);
     }
 
+    [TestMethod]
+    public async Task NextQuiescenceOrSync_ReportsSyncRequest_AndTheCaptureWaitsUntilTheSyncCompletes()
+    {
+        var stm = NewFlushingStateMachine();
+        stm.Start(new object(), "param");
+
+        var requested = await stm.NextQuiescenceOrSync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(new StatusAndSync(StateMachineStatus.Running, IsSyncRequested: true), requested);
+
+        var snapshot = stm.StartSync();
+        Assert.AreEqual(42, States.DeserializeToDictionary(snapshot.States)[new ExecutionScopeId("0")]);
+        Assert.IsFalse(stm.IsSyncRequested, "the started sync covers the request");
+
+        var next = stm.NextQuiescenceOrSync();
+        Assert.IsFalse(next.Wait(TimeSpan.FromMilliseconds(100)), "the capture waits for the sync to complete");
+
+        stm.CompleteSync();
+        var result = await next.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(new StatusAndSync(StateMachineStatus.Quiescent, IsSyncRequested: false), result);
+    }
+
+    private static StateMachine<object, string, string> NewFlushingStateMachine()
+        => new StateMachineFactory<object, string, string>(
+            startFlow: async (_, _, ctx) =>
+            {
+                await ctx.Capture(() => 42);
+                return await ctx.Message<string>();
+            }
+        ).New();
+
     private sealed class Gates
     {
         public TaskCompletionSource InCapture { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -64,7 +94,6 @@ public class NextQuiescenceOrSyncTests
                 }, flush: false);
 
                 return await ctx.Message<string>();
-            },
-            syncCallback: NoSync
+            }
         ).New();
 }

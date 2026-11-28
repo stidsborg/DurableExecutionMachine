@@ -1,7 +1,7 @@
 namespace DurableExecutionMachine.Samples;
 
 /// <summary>
-/// Stands in for the host's database: persists the latest bytes handed to the sync callback to a file.
+/// Stands in for the host's database: persists the latest snapshot the host syncs to a file.
 /// </summary>
 public class FileStore(string filePath)
 {

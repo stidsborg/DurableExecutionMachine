@@ -48,15 +48,14 @@ public class CaptureIdTests
         var stm = HelperFactory.New();
 
         stm.Start(flow, param: 1);
-        await stm.Suspend();
-        stm.ResumeAfterSuspend();
+        await TestHost.RunUntilQuiescent(stm);
 
         Assert.IsTrue(stm.IsCompleted);
         CollectionAssert.AreEqual(new[] { "0", "1" }, flow.Scopes);
     }
 
     private static readonly StateMachineFactory<HelperFlow, int, string> HelperFactory =
-        new((f, i, ctx) => f.Run(i, ctx), (_, _) => Task.CompletedTask);
+        new((f, i, ctx) => f.Run(i, ctx));
 
     /// <summary>
     /// The first capture happens inside a helper async method, the second in the caller after the helper returns.
@@ -77,7 +76,7 @@ public class CaptureIdTests
     }
 
     private static readonly StateMachineFactory<RecordingFlow, int, string> Factory =
-        new((f, i, ctx) => f.Run(i, ctx), (_, _) => Task.CompletedTask);
+        new((f, i, ctx) => f.Run(i, ctx));
 
     private static async Task<List<string>> RunFlow(Func<Task> yield)
     {
@@ -85,8 +84,7 @@ public class CaptureIdTests
         var stm = Factory.New();
 
         stm.Start(flow, param: 1);
-        await stm.Suspend();
-        stm.ResumeAfterSuspend();
+        await TestHost.RunUntilQuiescent(stm);
 
         Assert.IsTrue(stm.IsCompleted);
         return flow.Scopes;

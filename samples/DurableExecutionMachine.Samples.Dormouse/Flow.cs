@@ -49,7 +49,7 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         => Turn(bus, Factory.Deserialize(State!), stm =>
         {
             // delivered before the flow is resumed, so a wait for it is satisfied while replaying instead of being woken up afterwards.
-            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a flush
+            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a sync
             _ = stm.DeliverMessage(message, idempotencyKey: bus.Envelope?.Id.ToString());
             stm.Resume(this);
         });
@@ -62,7 +62,21 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         try
         {
             run(stm);
-            await stm.Suspend();
+            var suspended = stm.Suspend();
+            // Wolverine persists the state when the handler returns, so a sync the flow requests during the turn is completed at once.
+            // once no subflow is running, the requested suspension holds them all, so no sync can be requested afterwards
+            while (true)
+            {
+                var (status, syncRequested) = await stm.NextQuiescenceOrSync();
+                if (syncRequested)
+                {
+                    stm.StartSync();
+                    stm.CompleteSync();
+                }
+                else if (status != StateMachineStatus.Running)
+                    break;
+            }
+            await suspended;
         }
         finally
         {
@@ -77,10 +91,8 @@ public abstract class Flow<T1> : Saga where T1 : notnull
             State = stm.Serialize().States;
     }
 
-    // Wolverine persists the state when the handler returns, so flushes during a turn have nowhere else to go
     private static StateMachineFactory<Flow<T1>, T1, Unit> Factory { get; } = new(
-        startFlow: (flow, message, ctx) => flow.RunToEnd(message, ctx),
-        syncCallback: (_, _) => Task.CompletedTask
+        startFlow: (flow, message, ctx) => flow.RunToEnd(message, ctx)
     );
 
     // records how the flow ended before the machine counts it as suspended, so the turn sees it as soon as the suspension completes

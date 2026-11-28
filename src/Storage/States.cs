@@ -1,5 +1,4 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using DurableExecutionMachine.Flows;
 using DurableExecutionMachine.Hosting;
@@ -9,17 +8,14 @@ using DurableExecutionMachine.Utils;
 
 namespace DurableExecutionMachine.Storage;
 
-internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
+internal class States(SuspensionBarrier suspensionBarrier, TimeoutsManager timeoutsManager)
 {
     private readonly Dictionary<ExecutionScopeId, Lazy<byte[]>> _states = new();
     private static readonly Lazy<byte[]> Null = new(Array.Empty<byte>());
     private readonly Lock _lock = new();
     private readonly SyncBarrier _syncBarrier = new();
-    private readonly SemaphoreSlim _flushSemaphore = new(1);
-    private ExceptionDispatchInfo? _thrownException;
     
     internal SuspensionBarrier SuspensionBarrier { get; } = suspensionBarrier;
-    internal SyncCallback SyncCallback { get; } = syncCallback;
     internal TimeoutsManager TimeoutsManager { get; } = timeoutsManager;
 
     public void Lock(Action doWhileLocked)
@@ -188,13 +184,13 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
         return exists;
     }
 
-    public static States Deserialize(byte[] bytes, SuspensionBarrier suspensionBarrier, SyncCallback syncCallback, TimeoutsManager timeoutsManager)
+    public static States Deserialize(byte[] bytes, SuspensionBarrier suspensionBarrier, TimeoutsManager timeoutsManager)
     {
         var segments = ByteArrayMarshaller.Deserialize(bytes);
         if (segments.Count % 2 != 0)
             throw new InvalidOperationException("Serialized states must contain an even number of segments");
 
-        var states = new States(suspensionBarrier, syncCallback, timeoutsManager);
+        var states = new States(suspensionBarrier, timeoutsManager);
         for (var i = 0; i < segments.Count; i += 2)
         {
             var id = new ExecutionScopeId(segments[i]!.Value.ToStringFromUtf8Bytes());
@@ -208,7 +204,7 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
     public static Dictionary<ExecutionScopeId, object?> DeserializeToDictionary(byte[] bytes)
     {
         using var timeoutsManager = new TimeoutsManager();
-        var states = Deserialize(bytes, new SuspensionBarrier(timeoutsManager), (_, _) => Task.CompletedTask, timeoutsManager);
+        var states = Deserialize(bytes, new SuspensionBarrier(timeoutsManager), timeoutsManager);
         return states._states.ToDictionary(kv => kv.Key, kv => DeserializeState(kv.Value.Value));
     }
 
@@ -224,35 +220,21 @@ internal class States(SuspensionBarrier suspensionBarrier, SyncCallback syncCall
 
     public bool IsFlushRequested => _syncBarrier.IsSyncRequested;
 
-    // flushes never overlap, as the sync barrier requires.
-    // after a failed flush every later flush fails too, so states written since (such as a capture failed by the flush) are never persisted,
-    // and anyone waiting for a flush keeps waiting
-    public async Task Flush()
+    // requests a flush and completes when the host has persisted the next one it starts, which contains every state written before this call
+    public Task Flush() => _syncBarrier.Sync();
+
+    // the host starts a flush by taking the snapshot to persist. it covers every flush requested so far.
+    // serialized before the flush counts as started, so a value that fails to serialize leaves the requests in place
+    public SerializedStateMachine StartSync()
     {
-        await _flushSemaphore.WaitAsync();
-        try
+        lock (_lock)
         {
-            _thrownException?.Throw();
-
-            byte[] bytes;
-            DateTime? minimumTimeout;
-            lock (_lock)
-            {
-                _syncBarrier.SyncStarted();
-                (bytes, minimumTimeout) = Serialize();
-            }
-
-            await SyncCallback(bytes, minimumTimeout);
-            _syncBarrier.SyncCompleted();
-        }
-        catch (Exception e)
-        {
-            _thrownException ??= ExceptionDispatchInfo.Capture(e);
-            throw;
-        }
-        finally
-        {
-            _flushSemaphore.Release();
+            var snapshot = Serialize();
+            _syncBarrier.SyncStarted();
+            return snapshot;
         }
     }
+
+    // the host has persisted the snapshot of the last StartSync
+    public void CompleteSync() => _syncBarrier.SyncCompleted();
 }

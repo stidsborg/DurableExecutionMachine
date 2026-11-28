@@ -78,6 +78,9 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// <summary>
     /// Completes when no subflow is running (see <see cref="Quiescence"/>) or a sync is requested that the last started sync doesn't cover.
     /// Completes at once if either already holds.
+    /// The host calls it repeatedly: on a sync request it syncs (<see cref="StartSync"/>, persist, <see cref="CompleteSync"/>),
+    /// and it stops once the status is not <see cref="StateMachineStatus.Running"/> and no sync is requested.
+    /// A subflow waiting for a sync counts as running, so it holds back quiescence until the host syncs.
     /// The result holds <see cref="Status"/> and <see cref="IsSyncRequested"/> as read when it completes, so a subflow woken in the meantime
     /// may already have made the status <see cref="StateMachineStatus.Running"/>.
     /// </summary>
@@ -91,6 +94,18 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// True while a sync is requested that the last started sync doesn't cover, i.e. when the sync half of <see cref="NextQuiescenceOrSync"/> holds.
     /// </summary>
     public bool IsSyncRequested => _states.IsFlushRequested;
+
+    /// <summary>
+    /// Starts a sync: returns the snapshot for the host to persist, which covers every sync requested so far.
+    /// A flow that requested a sync (a <c>Capture</c> with <c>flush: true</c>) continues once the host calls <see cref="CompleteSync"/>.
+    /// The host calls <see cref="StartSync"/> and <see cref="CompleteSync"/> alternately and never concurrently.
+    /// </summary>
+    public SerializedStateMachine StartSync() => _states.StartSync();
+
+    /// <summary>
+    /// The snapshot returned by the last <see cref="StartSync"/> is persisted: the subflows and deliveries waiting for it continue.
+    /// </summary>
+    public void CompleteSync() => _states.CompleteSync();
 
     public void ResumeAfterSuspend()
     {
@@ -106,13 +121,13 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     }
     
     /// <summary>
-    /// When it returns, the message is part of the machine's state, so every later flush and <see cref="Serialize"/> contains it,
+    /// When it returns, the message is part of the machine's state, so every later <see cref="StartSync"/> and <see cref="Serialize"/> contains it,
     /// either in the inbox or at the wait it was handed to.
-    /// The returned task completes when a flush that started after this call completes, so the caller may then release what the message
-    /// depends on (e.g. ack it). The delivery does not request a flush: the caller may ignore the task and persist the state itself.
+    /// The returned task completes when a sync that started after this call completes, so the caller may then release what the message
+    /// depends on (e.g. ack it). The delivery does not request a sync: the caller may ignore the task and persist the state itself.
     /// It also delivers to a suspended machine: a waiting flow receives the message, but only continues when the machine is resumed.
-    /// A message with an idempotency key that was already delivered is ignored, but its task still waits for the next flush,
-    /// as the original delivery might not have been flushed yet.
+    /// A message with an idempotency key that was already delivered is ignored, but its task still waits for the next sync,
+    /// as the original delivery might not have been synced yet.
     /// </summary>
     public Task DeliverMessage(object message, string? idempotencyKey = null)
     {

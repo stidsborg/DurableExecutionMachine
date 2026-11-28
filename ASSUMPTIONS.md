@@ -18,8 +18,8 @@ first serialization — not as it was when it was captured or delivered.
 Values are serialized with `System.Text.Json` using their runtime type (`result.GetType()`), and the type is
 stored by name and resolved with `Type.GetType` on deserialization.
 
-Because serialization is lazy, a value that cannot be serialized fails on the next flush (or when read back),
-not inside the `Capture`/`Deliver` call that handed it over.
+Because serialization is lazy, a value that cannot be serialized fails on the next sync, where the host's
+`StartSync` or `Serialize` call throws (or when read back), not inside the `Capture`/`Deliver` call that handed it over.
 
 ## Flows must issue durable calls in a deterministic order
 

@@ -9,17 +9,15 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class StatesTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public void GetBytes_RoundTrips_ThroughDeserialize()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         states.SetState(new ExecutionScopeId(""), "root", typeof(string), removeDescendants: false);
         states.SetState(new ExecutionScopeId("0.1"), 42, typeof(int), removeDescendants: false);
         states.SetState(new ExecutionScopeId("1"), [], removeDescendants: false);
 
-        var restored = States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var restored = States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
 
         CollectionAssert.AreEqual(states.GetBytes(), restored.GetBytes());
     }
@@ -27,7 +25,7 @@ public class StatesTests
     [TestMethod]
     public void GetBytes_RoundTrips_WhenEmpty()
     {
-        var restored = States.Deserialize(new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager()).GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var restored = States.Deserialize(new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
 
         Assert.AreEqual(0, restored.GetBytes().Length);
     }
@@ -37,7 +35,7 @@ public class StatesTests
     {
         var timeoutsManager = new TimeoutsManager();
         var suspensionBarrier = new SuspensionBarrier(timeoutsManager);
-        var states = new States(suspensionBarrier, NoSync, timeoutsManager);
+        var states = new States(suspensionBarrier, timeoutsManager).AutoSynced();
         var ctx = new Context(new ExecutionScope(), states, messages: null!, suspensionBarrier, utcNow: () => DateTime.UtcNow);
         ctx.Scope.SetRoot();
 
@@ -56,7 +54,7 @@ public class StatesTests
     [TestMethod]
     public void RemoveDescendants_RemovesDescendants_ButNotSiblingsWithSamePrefix()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         foreach (var id in new[] { "1", "1.0", "1.0.0", "10", "10.0" })
             states.SetState(new ExecutionScopeId(id), id, typeof(string), removeDescendants: false);
 

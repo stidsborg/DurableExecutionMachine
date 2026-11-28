@@ -5,8 +5,6 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class StateMachineStatusTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public async Task Status_IsRunning_WhileCaptureRuns()
     {
@@ -51,8 +49,7 @@ public class StateMachineStatusTests
     public async Task Status_IsCompleted_WhenFlowThrows()
     {
         var stm = new StateMachineFactory<Gates, string, string>(
-            startFlow: (_, _, _) => Task.FromException<string>(new InvalidOperationException("boom")),
-            syncCallback: NoSync
+            startFlow: (_, _, _) => Task.FromException<string>(new InvalidOperationException("boom"))
         ).New();
         stm.Start(new Gates(), "param");
         await WaitUntilCompleted(stm);
@@ -85,7 +82,6 @@ public class StateMachineStatusTests
                 }, flush: false);
 
                 return await ctx.Message<string>();
-            },
-            syncCallback: NoSync
+            }
         ).New();
 }

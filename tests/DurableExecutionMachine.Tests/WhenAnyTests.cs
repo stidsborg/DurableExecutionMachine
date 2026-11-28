@@ -9,8 +9,6 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class WhenAnyTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public async Task WhenAny_ReturnsFirstToFinish_AndCancelsTheOthersToken()
     {
@@ -307,8 +305,7 @@ public class WhenAnyTests
             (_, _, ctx) => ctx.WhenAny([
                 async ct => { await ctx.Delay(TimeSpan.FromHours(1), ct); return 1; },
                 async ct => { await ctx.Delay(TimeSpan.FromHours(2), ct); return 2; }
-            ]),
-            NoSync
+            ])
         );
         var stm = factory.New();
 
@@ -319,13 +316,13 @@ public class WhenAnyTests
         Assert.IsFalse(stm.IsCompleted);
     }
 
-    private static States NewStates() => new(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+    private static States NewStates() => new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
 
     private static int StoredFailures(States states)
         => States.DeserializeToDictionary(states.GetBytes()).Values.OfType<FatalWorkflowException>().Count();
 
     private static States Restart(States states)
-        => States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        => States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
 
     private static Context CreateContext(
         States states,
