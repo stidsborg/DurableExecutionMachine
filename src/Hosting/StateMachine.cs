@@ -66,6 +66,11 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// </summary>
     public async Task NextQuiescenceOrSync() => await Task.WhenAny(Quiescence(), _states.FlushRequested());
 
+    /// <summary>
+    /// True while a sync is requested that the last started sync doesn't cover, i.e. when the sync half of <see cref="NextQuiescenceOrSync"/> holds.
+    /// </summary>
+    public bool IsSyncRequested => _states.IsFlushRequested;
+
     public void ResumeAfterSuspend()
     {
         _suspensionBarrier.Release();

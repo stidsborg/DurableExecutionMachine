@@ -14,12 +14,17 @@ internal sealed class SyncBarrier
     // completed while a sync is requested that no started sync covers
     private TaskCompletionSource _requested = NewTcs();
 
+    // true exactly while _requested is completed. written under the lock, read without it
+    private volatile bool _isRequested;
+    public bool IsSyncRequested => _isRequested;
+
     // requests a sync and waits for it, see NextSync
     public Task Sync()
     {
         lock (_lock)
         {
             _requested.TrySetResult();
+            _isRequested = true;
             return _nextSync.Wait();
         }
     }
@@ -43,6 +48,7 @@ internal sealed class SyncBarrier
             // the starting sync covers every request made so far
             if (_requested.Task.IsCompleted)
                 _requested = NewTcs();
+            _isRequested = false;
         }
     }
 
