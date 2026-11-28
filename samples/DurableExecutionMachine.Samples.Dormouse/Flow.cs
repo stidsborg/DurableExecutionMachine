@@ -10,6 +10,8 @@ namespace Dormouse;
 /// Wolverine owns the durability: the saga's only state is the machine's serialized bytes, and Wolverine stores them when the handler returns.
 /// Each message is one turn. The machine is restored from the bytes, the message is delivered, the flow runs until every part of it
 /// waits for a message that has not arrived, and the machine is serialized back onto the saga.
+/// A turn also ends at a sync point, as the state is only persisted when the handler returns: the snapshot is put on the saga and the flow
+/// sends itself a <see cref="Continue"/>, which is committed with it. The next turn runs on from the committed state.
 /// </summary>
 /// <remarks>
 /// A turn ends when the machine's suspension completes, and that only waits for flow code that is running. A wait woken up by a timer
@@ -31,8 +33,15 @@ public abstract class Flow<T1> : Saga where T1 : notnull
     protected IMessageContext Bus
         => _bus ?? throw new InvalidOperationException($"Flow '{Id}' has no message context: it is only set while a message is being handled");
 
-    private bool _completed;
-    private ExceptionDispatchInfo? _failure;
+    // how the flow of a turn ended. each turn has its own, as a turn that ends at a sync point leaves its machine behind,
+    // and the flow in it may still end after the next turn has started
+    private sealed class Outcome
+    {
+        public bool Completed;
+        public ExceptionDispatchInfo? Failure;
+    }
+
+    private Outcome _outcome = new();
 
     protected abstract Task Run(T1 message, Context ctx);
 
@@ -55,28 +64,44 @@ public abstract class Flow<T1> : Saga where T1 : notnull
             stm.Resume(this);
         });
 
+    // a Continue can arrive after the flow has completed, e.g. when another message continued it in the meantime. as the start of a saga,
+    // Wolverine then hands it an empty saga, which is marked completed so it is not stored. A static NotFound would be declared on every flow,
+    // as Wolverine does not find static methods declared on a saga's base class
+    public Task StartOrHandle(Continue message, IMessageContext bus)
+    {
+        if (State is null)
+        {
+            MarkCompleted();
+            return Task.CompletedTask;
+        }
+
+        return Turn(bus, Factory.Deserialize(State), stm => stm.Resume(this));
+    }
+
     private async Task Turn(IMessageContext bus, StateMachine<Flow<T1>, T1, Unit> stm, Action<StateMachine<Flow<T1>, T1, Unit>> run)
     {
         _bus = bus;
-        _completed = false;
-        _failure = null;
+        var outcome = _outcome = new Outcome();
         // the turn owns the machine and disposes it when it ends, also when it fails, so the machine's timer stops
         using var _ = stm;
         try
         {
             run(stm);
-            // Wolverine persists the state when the handler returns, so a sync the flow requests during the turn is completed at once.
-            // the suspension is only requested once no subflow is running, as a requested suspension holds a subflow at its next wait,
-            // even one whose message is already in the inbox
             while (true)
             {
                 var (status, syncRequested) = await stm.NextQuiescenceOrSync();
                 if (syncRequested)
                 {
-                    stm.StartSync();
-                    stm.CompleteSync();
+                    // the sync completes when Wolverine commits the state, i.e. when the handler returns, so the turn ends here.
+                    // the sync is never completed in this machine: the flow runs on in the next turn, from the committed state
+                    State = stm.StartSync().States;
+                    await bus.PublishAsync(new Continue(Id!));
+                    return;
                 }
-                else if (status != StateMachineStatus.Running)
+
+                // the suspension is only requested once no subflow is running, as a requested suspension holds a subflow at its next wait,
+                // even one whose message is already in the inbox
+                if (status != StateMachineStatus.Running)
                     break;
             }
 
@@ -89,8 +114,8 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         }
 
         // the machine is disposed while suspended, so nothing in it runs after the state has been taken
-        _failure?.Throw();
-        if (_completed)
+        outcome.Failure?.Throw();
+        if (outcome.Completed)
             MarkCompleted();
         else
             State = stm.Serialize().States;
@@ -100,17 +125,19 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         startFlow: (flow, message, ctx) => flow.RunToEnd(message, ctx)
     );
 
-    // records how the flow ended before the machine counts it as suspended, so the turn sees it as soon as the suspension completes
+    // records how the flow ended before the machine counts it as suspended, so the turn sees it as soon as the suspension completes.
+    // the outcome is taken when the flow starts, which is inside the turn's Start or Resume
     private async Task<Unit> RunToEnd(T1 message, Context ctx)
     {
+        var outcome = _outcome;
         try
         {
             await Run(message, ctx);
-            _completed = true;
+            outcome.Completed = true;
         }
         catch (Exception e)
         {
-            _failure = ExceptionDispatchInfo.Capture(e);
+            outcome.Failure = ExceptionDispatchInfo.Capture(e);
         }
 
         return new Unit();
