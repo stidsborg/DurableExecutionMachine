@@ -69,10 +69,11 @@ public class Context
     public Task<T> Capture<T>(Func<T> work, bool flush = true)
         => Capture(() => Task.FromResult(work()), flush);
     
-    public async Task Delay(TimeSpan delay)
+    // cancellationToken is meant for a token handed out by WhenAny, so a losing child stops waiting. its cancellation is not stored:
+    // on replay the stored winner cancels the losers again. any other token would make a replay take a different path
+    public async Task Delay(TimeSpan delay, CancellationToken cancellationToken = default)
     {
         var timeoutId = Scope.GetNextId();
-        var cancellationToken = Scope.CancellationToken;
         cancellationToken.ThrowIfCancellationRequested();
 
         if (!_states.TryGet(timeoutId, out DateTime timeoutAt))
@@ -113,8 +114,9 @@ public class Context
             return await _suspensionBarrier.SuspendedWhile(Task.WhenAll(tasks));
         }, flush);
 
-    // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined
-    public Task<T> WhenAny<T>(IEnumerable<Func<CancellationToken, Task<T>>> children, bool flush = true)
+    // the first child to finish wins, whether it succeeds or fails. the others are cancelled and still joined, so a child must pass
+    // its token to its waits or the join blocks until they complete. cancellationToken is the token of an outer WhenAny, if any
+    public Task<T> WhenAny<T>(IEnumerable<Func<CancellationToken, Task<T>>> children, bool flush = true, CancellationToken cancellationToken = default)
     {
         var childArray = children.ToArray();
 
@@ -128,8 +130,7 @@ public class Context
             var hasWinner = _states.TryGet(winnerIndexId, out int winnerIndex);
 
             // linked, so cancelling an outer WhenAny reaches this one's children, but not the other way round
-            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(Scope.CancellationToken);
-            Scope.CancellationToken = cancellation.Token;
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             // on replay the winner is already known, so the losers start cancelled and stop at their next wait
             if (hasWinner)
@@ -162,21 +163,22 @@ public class Context
         }, flush);
     }
 
-    // without a timeout the flow waits until a matching message arrives, so the result is never null
-    public async Task<TMessage> Message<TMessage>() where TMessage : class
-        => (await WaitForMessage<TMessage>(filter: null, timeout: null))!;
+    // without a timeout the flow waits until a matching message arrives, so the result is never null.
+    // cancellationToken is meant for a token handed out by WhenAny, as for Delay
+    public async Task<TMessage> Message<TMessage>(CancellationToken cancellationToken = default) where TMessage : class
+        => (await WaitForMessage<TMessage>(filter: null, timeout: null, cancellationToken))!;
 
-    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter) where TMessage : class
-        => (await WaitForMessage(filter, timeout: null))!;
+    public async Task<TMessage> Message<TMessage>(Func<TMessage, bool> filter, CancellationToken cancellationToken = default) where TMessage : class
+        => (await WaitForMessage(filter, timeout: null, cancellationToken))!;
 
     // with a timeout the result is null when no matching message arrives in time
-    public Task<TMessage?> Message<TMessage>(TimeSpan timeout) where TMessage : class
-        => WaitForMessage<TMessage>(filter: null, timeout);
+    public Task<TMessage?> Message<TMessage>(TimeSpan timeout, CancellationToken cancellationToken = default) where TMessage : class
+        => WaitForMessage<TMessage>(filter: null, timeout, cancellationToken);
 
-    public Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan timeout) where TMessage : class
-        => WaitForMessage(filter, timeout);
+    public Task<TMessage?> Message<TMessage>(Func<TMessage, bool> filter, TimeSpan timeout, CancellationToken cancellationToken = default) where TMessage : class
+        => WaitForMessage(filter, timeout, cancellationToken);
 
-    private async Task<TMessage?> WaitForMessage<TMessage>(Func<TMessage, bool>? filter, TimeSpan? timeout) where TMessage : class
+    private async Task<TMessage?> WaitForMessage<TMessage>(Func<TMessage, bool>? filter, TimeSpan? timeout, CancellationToken cancellationToken) where TMessage : class
     {
         var messageId = Scope.GetNextId();
         var timeoutId = messageId.CreateChild(0);
@@ -189,7 +191,7 @@ public class Context
             messageId,
             timeoutId,
             timeout == null ? null : _utcNow().Add(timeout.Value),
-            Scope.CancellationToken
+            cancellationToken
         );
     }
 }

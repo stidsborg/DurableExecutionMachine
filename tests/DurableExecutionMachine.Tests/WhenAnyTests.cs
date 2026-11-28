@@ -37,9 +37,9 @@ public class WhenAnyTests
         var loserCancelled = false;
 
         var winner = await ctx.WhenAny([
-            async _ =>
+            async ct =>
             {
-                try { await ctx.Delay(TimeSpan.FromHours(1)); }
+                try { await ctx.Delay(TimeSpan.FromHours(1), ct); }
                 catch (OperationCanceledException) { loserCancelled = true; throw; }
                 return 1;
             },
@@ -62,7 +62,7 @@ public class WhenAnyTests
         var ctx = CreateContext(states, new SuspensionBarrier(timeoutsManager), messages);
 
         var winner = await ctx.WhenAny([
-            async _ => await ctx.Message<string>(),
+            async ct => await ctx.Message<string>(ct),
             _ => Task.FromResult("fast")
         ]).WaitAsync(TimeSpan.FromSeconds(5));
         var later = ctx.Message<string>();
@@ -80,10 +80,10 @@ public class WhenAnyTests
         var innerToken = CancellationToken.None;
 
         var winner = await ctx.WhenAny([
-            _ => ctx.WhenAny([
-                async ct => { innerToken = ct; await ctx.Delay(TimeSpan.FromHours(1)); return "inner"; },
-                async _ => { await ctx.Delay(TimeSpan.FromHours(2)); return "inner"; }
-            ]),
+            outerToken => ctx.WhenAny([
+                async ct => { innerToken = ct; await ctx.Delay(TimeSpan.FromHours(1), ct); return "inner"; },
+                async ct => { await ctx.Delay(TimeSpan.FromHours(2), ct); return "inner"; }
+            ], cancellationToken: outerToken),
             async _ => { await Task.Yield(); return "outer"; }
         ]).WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -100,9 +100,9 @@ public class WhenAnyTests
         var siblingToken = CancellationToken.None;
 
         var outer = ctx.WhenAny([
-            async _ =>
+            async ct =>
             {
-                var inner = await ctx.WhenAny([_ => Task.FromResult(1)]);
+                var inner = await ctx.WhenAny([_ => Task.FromResult(1)], cancellationToken: ct);
                 await siblingGate.Task;
                 return inner;
             },
@@ -115,6 +115,20 @@ public class WhenAnyTests
         siblingGate.SetResult();
         Assert.AreEqual(1, await outer);
         Assert.IsTrue(siblingToken.IsCancellationRequested);
+    }
+
+    [TestMethod]
+    public async Task WhenAny_DoesNotReturn_WhileALoserWaitsWithoutItsToken()
+    {
+        var ctx = CreateContext(NewStates(), new SuspensionBarrier(new TimeoutsManager()));
+
+        var whenAny = ctx.WhenAny([
+            async _ => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; },
+            _ => Task.FromResult(2)
+        ]);
+        await Task.Delay(100);
+
+        Assert.IsFalse(whenAny.IsCompleted);
     }
 
     [TestMethod]
@@ -249,9 +263,9 @@ public class WhenAnyTests
         var storedFailures = -1;
 
         var winner = await ctx.WhenAny([
-            async _ =>
+            async ct =>
             {
-                try { await ctx.Capture(async () => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; }); }
+                try { await ctx.Capture(async () => { await ctx.Delay(TimeSpan.FromHours(1), ct); return 1; }); }
                 catch (Exception e) { caught = e; storedFailures = StoredFailures(states); }
                 return 1;
             },
@@ -272,9 +286,9 @@ public class WhenAnyTests
         var storedFailures = -1;
 
         var winner = await ctx.WhenAny([
-            async _ =>
+            async outerToken =>
             {
-                try { await ctx.WhenAny([async _ => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; }]); }
+                try { await ctx.WhenAny([async ct => { await ctx.Delay(TimeSpan.FromHours(1), ct); return 1; }], cancellationToken: outerToken); }
                 catch (Exception e) { caught = e; storedFailures = StoredFailures(states); }
                 return 1;
             },
@@ -291,8 +305,8 @@ public class WhenAnyTests
     {
         var factory = new StateMachineFactory<object, int, int>(
             (_, _, ctx) => ctx.WhenAny([
-                async _ => { await ctx.Delay(TimeSpan.FromHours(1)); return 1; },
-                async _ => { await ctx.Delay(TimeSpan.FromHours(2)); return 2; }
+                async ct => { await ctx.Delay(TimeSpan.FromHours(1), ct); return 1; },
+                async ct => { await ctx.Delay(TimeSpan.FromHours(2), ct); return 2; }
             ]),
             NoSync
         );
