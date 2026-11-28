@@ -78,8 +78,14 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// <summary>
     /// Completes when no subflow is running (see <see cref="Quiescence"/>) or a sync is requested that the last started sync doesn't cover.
     /// Completes at once if either already holds.
+    /// The result holds <see cref="Status"/> and <see cref="IsSyncRequested"/> as read when it completes, so a subflow woken in the meantime
+    /// may already have made the status <see cref="StateMachineStatus.Running"/>.
     /// </summary>
-    public async Task NextQuiescenceOrSync() => await Task.WhenAny(Quiescence(), _states.FlushRequested());
+    public async Task<StatusAndSync> NextQuiescenceOrSync()
+    {
+        await Task.WhenAny(Quiescence(), _states.FlushRequested());
+        return new StatusAndSync(Status, IsSyncRequested);
+    }
 
     /// <summary>
     /// True while a sync is requested that the last started sync doesn't cover, i.e. when the sync half of <see cref="NextQuiescenceOrSync"/> holds.

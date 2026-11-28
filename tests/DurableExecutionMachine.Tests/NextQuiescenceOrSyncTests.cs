@@ -19,7 +19,8 @@ public class NextQuiescenceOrSyncTests
         Assert.IsFalse(next.IsCompleted, "the capture is still running");
 
         gates.ReleaseCapture.SetResult();
-        await next.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await next.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(new StatusAndSync(StateMachineStatus.Quiescent, IsSyncRequested: false), result);
     }
 
     [TestMethod]
@@ -38,7 +39,10 @@ public class NextQuiescenceOrSyncTests
         Assert.IsFalse(next.Wait(TimeSpan.FromMilliseconds(100)), "the capture is still running and no sync is requested");
 
         gates.ReleaseCapture.SetResult();
-        await next.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await next.WaitAsync(TimeSpan.FromSeconds(5));
+        // the message wait leaves the barrier before it receives the delivered message, which completes next,
+        // so the status may already have moved on when it is read
+        Assert.IsFalse(result.IsSyncRequested);
     }
 
     private sealed class Gates
