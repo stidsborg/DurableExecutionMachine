@@ -34,6 +34,7 @@ public class NextQuiescenceOrSyncTests
 
         // a delivery waits for the next flush without requesting one
         _ = stm.DeliverMessage("hello");
+        Assert.IsFalse(stm.IsSyncRequested, "a delivery does not request a sync");
         Assert.IsFalse(next.Wait(TimeSpan.FromMilliseconds(100)), "the capture is still running and no sync is requested");
 
         gates.ReleaseCapture.SetResult();
