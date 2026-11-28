@@ -49,7 +49,8 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         => Turn(bus, Factory.Deserialize(State!), stm =>
         {
             // delivered before the flow is resumed, so a wait for it is satisfied while replaying instead of being woken up afterwards.
-            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a sync
+            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a sync,
+            // and the task fails once the turn disposes the machine
             _ = stm.DeliverMessage(message, idempotencyKey: bus.Envelope?.Id.ToString());
             stm.Resume(this);
         });
@@ -59,12 +60,14 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         _bus = bus;
         _completed = false;
         _failure = null;
+        // the turn owns the machine and disposes it when it ends, also when it fails, so the machine's timer stops
+        using var _ = stm;
         try
         {
             run(stm);
-            var suspended = stm.Suspend();
             // Wolverine persists the state when the handler returns, so a sync the flow requests during the turn is completed at once.
-            // once no subflow is running, the requested suspension holds them all, so no sync can be requested afterwards
+            // the suspension is only requested once no subflow is running, as a requested suspension holds a subflow at its next wait,
+            // even one whose message is already in the inbox
             while (true)
             {
                 var (status, syncRequested) = await stm.NextQuiescenceOrSync();
@@ -76,14 +79,16 @@ public abstract class Flow<T1> : Saga where T1 : notnull
                 else if (status != StateMachineStatus.Running)
                     break;
             }
-            await suspended;
+
+            // completes at once: only a message wakes a flow hosted here (see the remarks), and none is delivered during the turn
+            await stm.Suspend();
         }
         finally
         {
             _bus = null;
         }
 
-        // the machine is dropped while suspended, so nothing in it runs after the state has been taken
+        // the machine is disposed while suspended, so nothing in it runs after the state has been taken
         _failure?.Throw();
         if (_completed)
             MarkCompleted();
