@@ -4,7 +4,7 @@ namespace DurableExecutionMachine.Runtime;
 
 // lets a subflow wait until its current state has been persisted.
 // the host calls SyncStarted before it snapshots the state and SyncCompleted once the snapshot is persisted.
-// the host must call them alternately and never concurrently
+// the host must call them alternately and never concurrently, and Dispose neither concurrently with them
 internal sealed class SyncBarrier
 {
     private readonly Lock _lock = new();
@@ -18,11 +18,17 @@ internal sealed class SyncBarrier
     private volatile bool _isRequested;
     public bool IsSyncRequested => _isRequested;
 
+    // set once the host gives up on the machine. written and read under the lock
+    private bool _disposed;
+
     // requests a sync and waits for it, see NextSync
     public Task Sync()
     {
         lock (_lock)
         {
+            if (_disposed)
+                return Disposed();
+
             _requested.TrySetResult();
             _isRequested = true;
             return _nextSync.Wait();
@@ -31,7 +37,11 @@ internal sealed class SyncBarrier
 
     // waits for the next sync without requesting one.
     // a sync already in progress may have snapshotted the state before this call, so wait for the next one
-    public Task NextSync() => _nextSync.Wait();
+    public Task NextSync()
+    {
+        lock (_lock)
+            return _disposed ? Disposed() : _nextSync.Wait();
+    }
 
     // completes when a sync is requested, or at once if one already is
     public Task SyncRequested()
@@ -44,6 +54,7 @@ internal sealed class SyncBarrier
     {
         lock (_lock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             _syncing = _nextSync.MoveNext();
             // the starting sync covers every request made so far
             if (_requested.Task.IsCompleted)
@@ -57,6 +68,33 @@ internal sealed class SyncBarrier
         _syncing?.SetResult();
         _syncing = null;
     }
+
+    // fails the sync in progress, if any, and the next one, so everyone waiting for a sync is told at once. every later wait fails too
+    public void Dispose()
+    {
+        TaskCompletionSource? syncing;
+        TaskCompletionSource next;
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            // no sync can start any more, so none is requested
+            if (_requested.Task.IsCompleted)
+                _requested = NewTcs();
+            _isRequested = false;
+            syncing = _syncing;
+            _syncing = null;
+            next = _nextSync.MoveNext();
+        }
+
+        var disposed = new ObjectDisposedException(nameof(SyncBarrier));
+        syncing?.SetException(disposed);
+        next.SetException(disposed);
+    }
+
+    private Task Disposed() => Task.FromException(new ObjectDisposedException(nameof(SyncBarrier)));
 
     private static TaskCompletionSource NewTcs() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

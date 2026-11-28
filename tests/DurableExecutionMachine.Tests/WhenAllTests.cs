@@ -9,12 +9,10 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class WhenAllTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public async Task WhenAll_ReturnsResultsInArgumentOrder_WhenChildrenCompleteOutOfOrder()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var ctx = CreateContext(states, suspensionBarrier);
         var firstGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -33,7 +31,7 @@ public class WhenAllTests
     [TestMethod]
     public async Task WhenAll_ReturnsStoredResults_OnReplay_WithoutRunningChildren()
     {
-        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var sideEffects = 0;
         var firstResult = await firstRun.WhenAll([
@@ -45,7 +43,7 @@ public class WhenAllTests
         CollectionAssert.AreEquivalent(new[] { 1, 2, 3 }, firstResult);
         Assert.AreEqual(3, sideEffects);
 
-        var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var replay = CreateContext(replayStates, new SuspensionBarrier(new TimeoutsManager()));
         var childRan = false;
         var replayResult = await replay.WhenAll([
@@ -62,7 +60,7 @@ public class WhenAllTests
     [TestMethod]
     public async Task WhenAll_ReplaysOnlyUnfinishedChildren_WhenRestartedDuringJoin()
     {
-        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var firstRun = CreateContext(firstStates, new SuspensionBarrier(new TimeoutsManager()));
         var sideEffects = 0;
         var neverCompletes = new TaskCompletionSource<int>();
@@ -74,7 +72,7 @@ public class WhenAllTests
         Assert.AreEqual(1, sideEffects);
         var snapshot = firstStates.GetBytes();
 
-        var replayStates = States.Deserialize(snapshot, new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var replayStates = States.Deserialize(snapshot, new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var replay = CreateContext(replayStates, new SuspensionBarrier(new TimeoutsManager()));
         var replayResult = await replay.WhenAll([
             () => replay.Capture(() => ++sideEffects),
@@ -88,7 +86,7 @@ public class WhenAllTests
     [TestMethod]
     public async Task WhenAll_JoinsRemainingChildren_BeforeThrowingFailedChildsException()
     {
-        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var firstSuspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
         var firstRun = CreateContext(firstStates, firstSuspensionBarrier);
         var siblingGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -104,7 +102,7 @@ public class WhenAllTests
         await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(() => whenAll);
         Assert.AreEqual(0, firstSuspensionBarrier.Running);
 
-        var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager()).AutoSynced();
         var replay = CreateContext(replayStates, new SuspensionBarrier(new TimeoutsManager()));
         var childRan = false;
         var exception = await Assert.ThrowsExactlyAsync<FatalWorkflowException<InvalidOperationException>>(
@@ -119,28 +117,35 @@ public class WhenAllTests
     }
 
     [TestMethod]
-    public async Task WhenAll_FlushesAfterEachChildAndAtTheEnd_WhenFlushIsTrue()
+    public async Task WhenAll_WaitsForASyncAfterTheChildrenAndAnotherAtTheEnd_WhenFlushIsTrue()
     {
-        var flushes = 0;
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
 
-        await ctx.WhenAll([() => Task.FromResult(1), () => Task.FromResult(2)]);
+        var whenAll = ctx.WhenAll([() => Task.FromResult(1), () => Task.FromResult(2)]);
 
-        Assert.AreEqual(3, flushes);
+        Assert.IsTrue(states.IsFlushRequested, "the children wait for a sync");
+        states.StartSync();
+        states.CompleteSync();
+
+        await states.FlushRequested().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsFalse(whenAll.IsCompleted, "the WhenAll waits for a sync of its own result");
+        states.StartSync();
+        states.CompleteSync();
+
+        CollectionAssert.AreEqual(new[] { 1, 2 }, await whenAll.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [TestMethod]
-    public async Task WhenAll_NeverFlushes_WhenFlushIsFalse()
+    public async Task WhenAll_NeverRequestsASync_WhenFlushIsFalse()
     {
-        var flushes = 0;
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var ctx = CreateContext(states, new SuspensionBarrier(new TimeoutsManager()));
 
         var results = await ctx.WhenAll([() => Task.FromResult(1), () => Task.FromResult(2)], flush: false);
 
         CollectionAssert.AreEqual(new[] { 1, 2 }, results);
-        Assert.AreEqual(0, flushes);
+        Assert.IsFalse(states.IsFlushRequested);
     }
 
     [TestMethod]
@@ -155,8 +160,7 @@ public class WhenAllTests
                     return 1;
                 }]);
                 return results[0];
-            },
-            NoSync
+            }
         );
         var stm = factory.New();
 

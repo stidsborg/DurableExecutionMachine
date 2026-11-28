@@ -49,7 +49,8 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         => Turn(bus, Factory.Deserialize(State!), stm =>
         {
             // delivered before the flow is resumed, so a wait for it is satisfied while replaying instead of being woken up afterwards.
-            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a flush
+            // the envelope id makes a redelivered message a duplicate. Wolverine persists the state, so the turn does not wait for a sync,
+            // and the task fails once the turn disposes the machine
             _ = stm.DeliverMessage(message, idempotencyKey: bus.Envelope?.Id.ToString());
             stm.Resume(this);
         });
@@ -59,9 +60,27 @@ public abstract class Flow<T1> : Saga where T1 : notnull
         _bus = bus;
         _completed = false;
         _failure = null;
+        // the turn owns the machine and disposes it when it ends, also when it fails, so the machine's timer stops
+        using var _ = stm;
         try
         {
             run(stm);
+            // Wolverine persists the state when the handler returns, so a sync the flow requests during the turn is completed at once.
+            // the suspension is only requested once no subflow is running, as a requested suspension holds a subflow at its next wait,
+            // even one whose message is already in the inbox
+            while (true)
+            {
+                var (status, syncRequested) = await stm.NextQuiescenceOrSync();
+                if (syncRequested)
+                {
+                    stm.StartSync();
+                    stm.CompleteSync();
+                }
+                else if (status != StateMachineStatus.Running)
+                    break;
+            }
+
+            // completes at once: only a message wakes a flow hosted here (see the remarks), and none is delivered during the turn
             await stm.Suspend();
         }
         finally
@@ -69,7 +88,7 @@ public abstract class Flow<T1> : Saga where T1 : notnull
             _bus = null;
         }
 
-        // the machine is dropped while suspended, so nothing in it runs after the state has been taken
+        // the machine is disposed while suspended, so nothing in it runs after the state has been taken
         _failure?.Throw();
         if (_completed)
             MarkCompleted();
@@ -77,10 +96,8 @@ public abstract class Flow<T1> : Saga where T1 : notnull
             State = stm.Serialize().States;
     }
 
-    // Wolverine persists the state when the handler returns, so flushes during a turn have nowhere else to go
     private static StateMachineFactory<Flow<T1>, T1, Unit> Factory { get; } = new(
-        startFlow: (flow, message, ctx) => flow.RunToEnd(message, ctx),
-        syncCallback: (_, _) => Task.CompletedTask
+        startFlow: (flow, message, ctx) => flow.RunToEnd(message, ctx)
     );
 
     // records how the flow ended before the machine counts it as suspended, so the turn sees it as soon as the suspension completes

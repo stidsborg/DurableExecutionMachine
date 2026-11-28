@@ -5,8 +5,6 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class QuiescenceTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
-
     [TestMethod]
     public async Task Quiescence_WaitsForRunningCapture_AndCompletesWhenFlowWaitsForMessage()
     {
@@ -60,10 +58,9 @@ public class QuiescenceTests
                     gates.InCapture.SetResult();
                     await gates.ReleaseCapture.Task;
                     return 1;
-                });
+                }, flush: false);
 
                 return await ctx.Message<string>();
-            },
-            syncCallback: NoSync
+            }
         ).New();
 }

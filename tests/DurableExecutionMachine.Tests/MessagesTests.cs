@@ -7,18 +7,17 @@ namespace DurableExecutionMachine.Tests;
 [TestClass]
 public class MessagesTests
 {
-    private static readonly SyncCallback NoSync = (_, _) => Task.CompletedTask;
     private static readonly UtcNow Now = () => DateTime.UtcNow;
 
     [TestMethod]
     public async Task Deliver_IgnoresDuplicateIdempotencyKey_AfterRestart()
     {
-        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var firstRun = new Messages(firstStates, new TimeoutsManager(), Now);
         firstRun.Initialize();
         _ = firstRun.Deliver("hello", idempotencyKey: "key");
 
-        var restartedStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var restartedStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var restarted = new Messages(restartedStates, new TimeoutsManager(), Now);
         restarted.Initialize();
         var duplicate = restarted.Deliver("hello", idempotencyKey: "key");
@@ -30,14 +29,15 @@ public class MessagesTests
         Assert.AreEqual(1, storedMessages);
 
         Assert.IsFalse(duplicate.IsCompleted);
-        await restartedStates.Flush();
+        restartedStates.StartSync();
+        restartedStates.CompleteSync();
         await duplicate;
     }
 
     [TestMethod]
     public async Task Deliver_DuplicateIdempotencyKey_CompletesOnlyAfterNextFlush()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
         var original = messages.Deliver("hello", idempotencyKey: "key");
@@ -46,7 +46,8 @@ public class MessagesTests
         Assert.IsFalse(original.IsCompleted);
         Assert.IsFalse(duplicate.IsCompleted);
 
-        await states.Flush();
+        states.StartSync();
+        states.CompleteSync();
         await original;
         await duplicate;
     }
@@ -55,7 +56,7 @@ public class MessagesTests
     public void Deliver_StoresIdempotencyKeyCreationTime_FromUtcNow()
     {
         var createdAt = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), utcNow: () => createdAt);
         messages.Initialize();
         _ = messages.Deliver("hello", idempotencyKey: "key");
@@ -69,7 +70,7 @@ public class MessagesTests
     [TestMethod]
     public async Task Deliver_SkipsMessage_WhenFilterThrows()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
         var messageId = new ExecutionScopeId("0");
@@ -95,28 +96,27 @@ public class MessagesTests
     [TestMethod]
     public void Deliver_StoresMessage_WithoutFlushing()
     {
-        var flushes = 0;
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), (_, _) => { flushes++; return Task.CompletedTask; }, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
 
         var flushed = messages.Deliver("hello", idempotencyKey: null);
 
-        var restartedStates = States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var restartedStates = States.Deserialize(states.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var inbox = States
             .DeserializeToDictionary(restartedStates.GetBytes())
             .Where(kv => kv.Key.Id.StartsWith("-1.0."))
             .Select(kv => kv.Value)
             .ToList();
         CollectionAssert.AreEqual(new object[] { "hello" }, inbox);
-        Assert.AreEqual(0, flushes);
+        Assert.IsFalse(states.IsFlushRequested);
         Assert.IsFalse(flushed.IsCompleted);
     }
 
     [TestMethod]
     public void Deliver_IgnoresDuplicateIdempotencyKey()
     {
-        var states = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var states = new States(new SuspensionBarrier(new TimeoutsManager()), new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
 
@@ -134,7 +134,7 @@ public class MessagesTests
     public async Task Deliver_WhileSuspended_IsReceivedByLaterWait()
     {
         var suspensionBarrier = new SuspensionBarrier(new TimeoutsManager());
-        var states = new States(suspensionBarrier, NoSync, new TimeoutsManager());
+        var states = new States(suspensionBarrier, new TimeoutsManager());
         var messages = new Messages(states, new TimeoutsManager(), Now);
         messages.Initialize();
 
@@ -191,8 +191,7 @@ public class MessagesTests
                 var message = await ctx.Message<string>();
                 received.SetResult(message);
                 return message;
-            },
-            syncCallback: NoSync
+            }
         ).New();
 
     [TestMethod]
@@ -265,7 +264,7 @@ public class MessagesTests
     {
         var timeoutsManager = new TimeoutsManager();
         var suspensionBarrier = new SuspensionBarrier(timeoutsManager);
-        var states = new States(suspensionBarrier, NoSync, timeoutsManager);
+        var states = new States(suspensionBarrier, timeoutsManager);
         var messages = new Messages(states, timeoutsManager, Now);
         messages.Initialize();
         return (timeoutsManager, suspensionBarrier, states, messages);
