@@ -33,24 +33,41 @@ public class CaptureReplayTests
     }
 
     [TestMethod]
-    public async Task Capture_StoresOperationCanceledException_WhenScopeIsNotCancelled()
+    public async Task Capture_StoresCancellation_AndThrowsItAsOperationCanceledException_OnReplay()
     {
         var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var firstRun = CreateContext(firstStates);
-        int TimedOut() => throw new OperationCanceledException("timed out");
-        await Assert.ThrowsExactlyAsync<FatalWorkflowException<OperationCanceledException>>(
-            () => firstRun.Capture(TimedOut)
+        int Cancelled() => throw new OperationCanceledException("cancelled");
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
+            () => firstRun.Capture(Cancelled)
         );
 
         var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
         var replay = CreateContext(replayStates);
         var workRan = false;
-        var exception = await Assert.ThrowsExactlyAsync<FatalWorkflowException<OperationCanceledException>>(
+        var exception = await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => replay.Capture(() => { workRan = true; return 42; })
         );
 
         Assert.IsFalse(workRan);
-        Assert.AreEqual("timed out", exception.FlowErrorMessage);
+        Assert.AreEqual("cancelled", exception.Message);
+    }
+
+    [TestMethod]
+    public async Task Capture_ThrowsSubtypeOfOperationCanceledException_AsFatalWorkflowException_InEveryRun()
+    {
+        var firstStates = new States(new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var firstRun = CreateContext(firstStates);
+        int Cancelled() => throw new TaskCanceledException("cancelled");
+        await Assert.ThrowsExactlyAsync<FatalWorkflowException<TaskCanceledException>>(
+            () => firstRun.Capture(Cancelled)
+        );
+
+        var replayStates = States.Deserialize(firstStates.GetBytes(), new SuspensionBarrier(new TimeoutsManager()), NoSync, new TimeoutsManager());
+        var replay = CreateContext(replayStates);
+        await Assert.ThrowsExactlyAsync<FatalWorkflowException<TaskCanceledException>>(
+            () => replay.Capture(() => 42)
+        );
     }
 
     private static Context CreateContext(States states)

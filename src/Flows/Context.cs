@@ -32,7 +32,7 @@ public class Context
 
             var prevResult = _states.Deserialize(id, out var hasPrevResult);
             if (hasPrevResult)
-                return prevResult is FatalWorkflowException fatal ? throw fatal : (T)prevResult!;
+                return prevResult is FatalWorkflowException fatal ? throw fatal.ToThrown() : (T)prevResult!;
 
             try
             {
@@ -52,15 +52,13 @@ public class Context
                 _states.SetException(id, e, removeDescendants: true);
                 throw;
             }
-            catch (OperationCanceledException) when (Scope.CancellationToken.IsCancellationRequested)
-            {
-                // cancelled by a WhenAny, so not stored: on replay the branch starts cancelled and throws again at its next wait
-                throw;
-            }
             catch (Exception e)
             {
+                // a cancellation is stored like any other failure, but thrown as the cancellation it is (see ToThrown)
                 var workflowException = FatalWorkflowException.CreateNonGeneric(e);
                 _states.SetException(id, workflowException, removeDescendants: true);
+                if (e.GetType() == typeof(OperationCanceledException))
+                    throw;
                 throw workflowException;
             }
         }
@@ -84,7 +82,8 @@ public class Context
         }
 
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var cancellation = cancellationToken.Register(() => cancelled.TrySetCanceled(cancellationToken));
+        // failed rather than cancelled, so awaiting it throws an OperationCanceledException and not its subtype TaskCanceledException
+        await using var cancellation = cancellationToken.Register(() => cancelled.TrySetException(new OperationCanceledException(cancellationToken)));
         await _suspensionBarrier.SuspendedUntil(cancelled.Task, timeoutId, timeoutAt);
     }
     
