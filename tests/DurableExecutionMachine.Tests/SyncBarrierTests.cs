@@ -87,4 +87,30 @@ public class SyncBarrierTests
         barrier.SyncCompleted();
         Assert.IsTrue(sync.Wait(TimeSpan.FromSeconds(5)));
     }
+
+    [TestMethod]
+    public void Dispose_FailsTheSyncInProgress_AndTheNextSync()
+    {
+        var barrier = new SyncBarrier();
+        var inProgress = barrier.Sync();
+        barrier.SyncStarted();
+        var next = barrier.NextSync();
+
+        barrier.Dispose();
+
+        Assert.IsInstanceOfType<ObjectDisposedException>(inProgress.Exception?.InnerException);
+        Assert.IsInstanceOfType<ObjectDisposedException>(next.Exception?.InnerException);
+    }
+
+    [TestMethod]
+    public void AfterDispose_WaitsFailAtOnce_AndSyncStartedThrows()
+    {
+        var barrier = new SyncBarrier();
+        barrier.Dispose();
+
+        Assert.IsInstanceOfType<ObjectDisposedException>(barrier.Sync().Exception?.InnerException);
+        Assert.IsInstanceOfType<ObjectDisposedException>(barrier.NextSync().Exception?.InnerException);
+        Assert.IsFalse(barrier.IsSyncRequested, "a sync after disposal is not requested");
+        Assert.ThrowsExactly<ObjectDisposedException>(barrier.SyncStarted);
+    }
 }

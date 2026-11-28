@@ -237,4 +237,7 @@ internal class States(SuspensionBarrier suspensionBarrier, TimeoutsManager timeo
 
     // the host has persisted the snapshot of the last StartSync
     public void CompleteSync() => _syncBarrier.SyncCompleted();
+
+    // the host gives up on the machine: every flush waited for, now or later, fails
+    public void Dispose() => _syncBarrier.Dispose();
 }

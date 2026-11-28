@@ -4,11 +4,12 @@ using DurableExecutionMachine.Storage;
 
 namespace DurableExecutionMachine.Hosting;
 
-public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
+public class StateMachine<TFlow, TParam, TResult> : IDisposable where TParam : notnull
 {
     private readonly Func<TFlow, TParam, Context, Task<TResult>> _startFlow;
     private readonly States _states;
     private readonly SuspensionBarrier _suspensionBarrier;
+    private readonly TimeoutsManager _timeoutsManager;
     
     private TFlow _flow;
     private Task<TResult> _flowTask;
@@ -26,6 +27,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
         _startFlow = startFlow;
         _states = states;
         _suspensionBarrier = suspensionBarrier;
+        _timeoutsManager = timeoutsManager;
         Context = CreateContext(states, suspensionBarrier, timeoutsManager, utcNow);
     }
 
@@ -107,6 +109,19 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// </summary>
     public void CompleteSync() => _states.CompleteSync();
 
+    /// <summary>
+    /// The host gives up on the machine, e.g. when it could not persist a snapshot.
+    /// Every task waiting for a sync fails with an <see cref="ObjectDisposedException"/>: the tasks returned by <see cref="DeliverMessage"/>
+    /// and the captures waiting for their flush. A later delivery's task and a later flush fail at once, and <see cref="StartSync"/> throws.
+    /// Timeouts no longer fire. Flow code that is running is not stopped.
+    /// Like <see cref="StartSync"/> and <see cref="CompleteSync"/>, it is not called concurrently with them.
+    /// </summary>
+    public void Dispose()
+    {
+        _states.Dispose();
+        _timeoutsManager.Dispose();
+    }
+
     public void ResumeAfterSuspend()
     {
         _suspensionBarrier.Release();
@@ -128,6 +143,7 @@ public class StateMachine<TFlow, TParam, TResult> where TParam : notnull
     /// It also delivers to a suspended machine: a waiting flow receives the message, but only continues when the machine is resumed.
     /// A message with an idempotency key that was already delivered is ignored, but its task still waits for the next sync,
     /// as the original delivery might not have been synced yet.
+    /// The task fails if the machine is disposed before that sync completes (see <see cref="Dispose"/>).
     /// </summary>
     public Task DeliverMessage(object message, string? idempotencyKey = null)
     {
